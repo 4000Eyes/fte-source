@@ -402,7 +402,7 @@ class GDBUser(Resource):
         try:
             driver = NeoDB.get_session()
             query = "MERGE (a:User)-[r:OCCASION]->(f:friend_occasion)<-(b:occasion) " \
-                    " ON MATCH set b.status = $status_, updated_dt = datetime() "
+                    " ON MATCH set b.status = $status_, updated_dt = datetime() " \
                     " WHERE f.fid = $friend_circle_id" \
                     " AND f.occasion_id = $occasion_id_" \
                     " AND a.user_id = $user_id_" \
