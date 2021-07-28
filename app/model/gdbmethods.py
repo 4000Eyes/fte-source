@@ -251,7 +251,7 @@ class GDBUser(Resource):
                     " ON MATCH set ft_create_dt = $fc_create_dt_" \
                     " WHERE r.fid = $friend_circle_id_ AND " \
                     " b.category_id = $interest_category_id_" \
-                    " a.user_id = $contributor_user_id_"
+                    " a.user_id = $contributor_user_id_" \
                     "RETURN f.fc_id"
             result = driver.run(query, contributor_user_id_=contributor_user_id,
                                 friend_circle_id_=friend_circle_id,
@@ -376,8 +376,47 @@ class GDBUser(Resource):
             return False
         return True
 
-    def vote_occasion_accuracy(self, occasion_uid, user_id, flag, occasion_date):
+    def vote_occasion(self, occasion_id, user_id, flag, occasion_date):
+
+        try:
+            driver = NeoDB.get_session()
+            query = "MERGE (a:User)-[:VOTE_OCCASION]->(b:friend_occasion) " \
+                    " ON MATCH set b.status= flag, b.updated_dt=datetime() " \
+                    " ON CREATE set b.status = flag, b.created_dt=datetime() " \
+                    " WHERE b.occasion_id = $occasion_id_ AND " \
+                    " a.user_id = $user_id_" \
+                    " RETURN b.occasion_id as occasion_id"
+
+            result = driver.run(query, user_id_ = user_id, occasion_id_ = occasion_id)
+            record = result.single()
+            if record["occasion_id"]:
+                print ("Sucessfully added")
+                return True
+        except neo4j.exceptions.Neo4jError as e:
+            print ("Error in executing the SQL", e)
+            return False
         return True
 
-    def delete_occasion(self, frienc_circle_id, occasion_uid):
+    def update_occasion(self, user_id, friend_circle_id, occasion_id, status):
+
+        try:
+            driver = NeoDB.get_session()
+            query = "MERGE (a:User)-[r:OCCASION]->(f:friend_occasion)<-(b:occasion) " \
+                    " ON MATCH set b.status = $status_, updated_dt = datetime() "
+                    " WHERE f.fid = $friend_circle_id" \
+                    " AND f.occasion_id = $occasion_id_" \
+                    " AND a.user_id = $user_id_" \
+                    " RETURN a.user_id, f.fo_id, f.occasion_date, f.occasion_uid, b.occasion_type "
+
+            result = driver.run(query,
+                                friend_circle_id_=friend_circle_id, status_ = status, user_id_ = user_id, occasion_id_ = occasion_id)
+            record = result.single()
+            if record["user_id"] :
+                return True
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            return False
         return True
+
