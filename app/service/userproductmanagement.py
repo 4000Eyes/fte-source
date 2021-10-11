@@ -1,94 +1,119 @@
-from flask import Response, request, current_app
-from ..model.gdbmethods import GDBUser, UserProductDBManagement
+from flask import Response, request, current_app, jsonify
+from model.searchdb import SearchDB
+from model.gdbmethods import GDBUser
 from flask_restful import Resource
-from .classhelper import ManageFriendCircleHelper
+from bson import json_util, ObjectId
 import datetime
 import json
-from ..model.ftesearch import FTESearch
 
 
-class UserProductManagement:
-    def post(self):
-        content = request.get_json()
-        friend_circle_id = content["friend_circle_id"]
-        product_id = content["product_id"]
-        price_lower_bound = content["price_lower_bound"]
-        price_upper_bound = content["price_upper_bound"]
-        category_id = content["category_id"]
-
-        return True
-
+class UserProductManagement(Resource):
     def get(self):
-        return True
+        try:
+            content = request.get_json()
+            print("Inside the search request")
+            if content is None:
+                return {"status": "Failure"}, 400
+            if content["request_id"] is None:
+                return {"status": "Input argument (request_id) is empty"}, 400
+            content["friend_circle_id"] = None if "friend_circle_id" not in content else content["friend_circle_id"]
+            output_list = []
+            objSearch = SearchDB()
+            objGDBUser = GDBUser()
+            if content["subcategory_list"] is not None:
+                content["subcategory"] = "'%s'" % "','".join(content["subcategory_list"])
+            if content["color_list"] is not None:
+                content["color"]= "'%s'" % "','".join(content["color_list"])
+            if content["category_list"] is not None:
+               content["category"]= "'%s'" % "','".join(content["category_list"])
+            if  content["age_floor"] is None or \
+                content["age_ceiling"] is None or \
+                content["sort_order"] is None :
+                current_app.logger.error("Age floor , age ceiling, sort order are required for any search and one or more is missing")
+                print ("Key attributes age floor, ceilinng, sort order is missing")
+                return {"status":"failure. missing key inputs age floor or age celing or sort order"}, 400
+            if content["request_id"] == 1:
+                #content["sort_order"} should be ASC or DSC
+                # Note: Filter is applied for price only
+                # if objSearch.search_by_occasion("birthday", 2, 32, output_list):
+                subcategory_list = []
+                if content["friend_circle_id"] is None or \
+                        content["occasion_names"] is None :
+                    current_app.logger.error("some of the key inputs are required, but missing to get the search results")
+                    return {"status": "failure. Friend circle id and or occasion names is missing"}, 400
 
-    def update(self):
-        return True
+                if not objGDBUser.get_subcategory_interest(content["friend_circle_id"], content["subcategory"]):
+                    current_app.logger.error("Unable to get the subcategories for secret friend")
+                    return {"status": "failure. Unable to get subcategories for secret friend"}, 400
 
-    def delete(self):
-        return True
+            if objSearch.search_by_occasion(content, output_list):
+                print("The result is ", output_list)
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+            else:
+                return {"status": "failure"}, 500
 
+            if content["request_id"] == 2:
+                # get occasions for a secret friend and by given price point
+                if objSearch.search_by_occasion_price(content, output_list):
+                    current_app.logger.error("Unable to get search data by occasion and price point")
+                    return {"status": "Failure Unable to get search data by occasion and price point"}, 400
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+            if content["request_id"] == 3:
+                if objSearch.search_by_subcategory(content, output_list):
+                    current_app.logger.error("Unable to get search data by subcategory")
+                    return {"status": "Failure Unable to get search data by subcategory"}, 400
+                # get products by subcategory
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+            if content["request_id"] == 4:
+                # get products by category
+                if objSearch.search_by_category(content, output_list):
+                    current_app.logger.error("Unable to get search data by category")
+                    return {"status": "Failure Unable to get search data by category"}, 400
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+            if content["request_id"] == 5:
+                # get all the voted products
 
-class UserProductManagementHelper:
-    def search_product_by_friend_circle_id(self, friend_circle_id, product_id, category_id, location_id, loutput):
-        output = []
-        objUserProductDB = UserProductDBManagement()
+                if content["friend_circle_id"] is  None or \
+                    content["product_id"] is None or \
+                    content["occasion_name"] is None or \
+                    content["occasion_year"]:
+                    current_app.logger.error("Friend Circle ID , product id, occasion name, occasion year are required and one or more parameters is missing")
+                    print("Friend Circle ID , product id, occasion name, occasion year are required and one or more parameters is missing")
+                    return {"status": "Failure Friend Circle ID , product id, occasion name, occasion year are required and one or more parameters is missing"}, 400
+                if not objSearch.get_product_votes(inputs, output_list):
+                    current_app.logger.error("Unable to get voted products")
+                    print("Friend Circle ID , Unable to get votes products")
+                    return {"status": "Unable to get voted products"}, 400
 
-        if friend_circle_id is None:
-            print ("The friend circle id cannot be Null")
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+            if content["request_id"] == 6:
+                # get products by color
+                if objSearch.search_by_occasion_color(content, output_list):
+                    current_app.logger.error("Unable to get search data by category")
+                    return {"status": "Failure Unable to get search data by category"}, 400
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+            if content["request_id"] == 7:
+                # get the product detail.
+                if not objSearch.get_product_detail(inputs, output_list):
+                    current_app.logger.error("Unable to product detail for ", inputs["product_id"])
+                    print("Unable to product detail for ", inputs["product_id"])
+                    return {"status", "Unable to product detail for ", inputs["product_id"]}, 400
+
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+            if content["request_id"] == 8:
+                #vote product
+                if not objSearch.vote_product(inputs):
+                    current_app.logger.error("Issue with inserting vote for product", inputs["product_id"])
+                    print("Unable to insert the vote", inputs["product_id"])
+                    return {"status", "Unable to insert vote for ", inputs["product_id"]}, 400
+            if content["request_id"] == 100:
+                # apply all conditions including category, subcategory, color, brand, occasions
+                return {"data": json.loads(json_util.dumps(output_list))}, 200
+        except Exception as e:
+            current_app.logger.error(e)
             return False
-            # get the secret friend attributes
-        objGDBUser = GDBUser()
-
-        if not objGDBUser.get_friend_circle_info(friend_circle_id, output) or output["user_id"] is None:
-            print ("There is an issue getting information about the secret friend or the friend doesnt exist anymore")
-            return False
-
-        # Get secret friend interest
-        loutput_interest = []
-        if not objGDBUser.get_interest_by_friend_circle(friend_circle_id, loutput_interest):
-            print ("Error in extracting the interests for secret friend")
-            return False
-        for row in loutput_interest:
-            category_list = category_list + row["category_id"]
-
-        if output["user_age"]:
-            user_age_lo = int(output["user_age"]) - int(output["user_age"]) % 15
-            user_age_hi = user_age_lo + 15
-
-        if objUserProductDB.get_product(
-                product_id,
-                category_id,
-                location_id,
-                output["user_id"],
-                user_age_lo,
-                user_age_hi,
-                output["user_location"],
-                loutput):
-            print ("Successfully retrieved the product selection")
-            return True
-        return True
-
-    def search_product(self):
-        # NOTE: BROAD SEARCH WITHOUT THE FRIEND CIRCLE ID WILL NOT BE AVAILABLE IN V1
-        return True
 
 
-# structure of tagged products
-#  (n:tagged_product {product_id: XYZ, tagged_category: ["x', "y", "z"], "last_updated_date": "dd-mon-yyyy",
-#  "location":"country", "age_lower" : 45, "age_upper": 43, "price_upper": 3, "price_lower": 54, "gender": "M",
-#  "color": [red,blue, white], "category_relevance" : [3,4,5], uniqueness index: [1..10]
-# )
-
-# required functions for this API
-# List all products for a given circle id
-# Get all products by price range
-# Get all products by category
-
-# how should search condition pruning should work.
-# unless it is a product specific search
-# location is key
-# if the result is 0 expand to other neighbouring categories (may be by relevance)
-#
-
-
-# USERS DYNAMICALLY ADDING INTEREST FOR SECRET FRIENDS WILL NOT BE SUPPORTED IN V1
+class UserSearchManagement(Resource):
+    def get(self):
+        return {"status": "succcess"}, 200

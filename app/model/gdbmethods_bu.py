@@ -148,7 +148,35 @@ class GDBUser(Resource):
     # friend_circle_created_dt
     # friend_circle_updated_dt
 
-    def insert_friend_circle(self, user_id, friend_id, friend_circle_name, friend_circle_id):
+    def insert_friend_circle_V0(self, user_id, friend_id, friend_circle_name, friend_circle_id):
+
+        driver = NeoDB.get_session()
+        fid = uuid.uuid4()
+        try:
+            query = "MATCH (n:User), (m:User)" \
+                    " WHERE n.user_id = $user_id_ AND m.user_id = $friend_id_ " \
+                    " CREATE (n)-[:CIRCLE_CREATOR]->(x:friend_circle{friend_circle_id:$friend_circle_id_, " \
+                    "friend_circle_name:$friend_circle_name_, friend_circle_created_dt:datetime()})-[" \
+                    ":SECRET_FRIEND]->(m) " \
+                    " RETURN x.friend_circle_id as circle_id"
+
+            result = driver.run(query, user_id_=str(user_id), friend_id_=str(friend_id), friend_circle_id_=str(fid),
+                                friend_circle_name_=friend_circle_name)
+
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            record = result.single()
+            info = result.consume().counters.nodes_created
+            print("The ids are ", user_id, friend_id, info)
+            friend_circle_id[0] = record["circle_id"]
+            print("Successfully inserted friend circle", friend_circle_id[0])
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            friend_circle_id[0] = None
+            return False
+
+        def insert_friend_circle(self, user_id, friend_id, friend_circle_name, friend_circle_id):
 
             driver = NeoDB.get_session()
             fid = uuid.uuid4()
@@ -176,8 +204,6 @@ class GDBUser(Resource):
                 friend_circle_id[0] = None
                 return False
 
-
-
     def add_contributor_to_friend_circle(self, user_id, friend_id, friend_circle_id, output):
         try:
             driver = NeoDB.get_session()
@@ -190,8 +216,6 @@ class GDBUser(Resource):
                     " RETURN x.friend_circle_id as friend_circle_id"
 
             result = driver.run(query, user_id_=user_id, friend_id_ = friend_id, friend_circle_id_=friend_circle_id)
-            print("The  query is ", result.consume().query)
-            print("The  parameters is ", result.consume().parameters)
             if result.peek() is None:
                 output = []
                 return True
@@ -200,53 +224,50 @@ class GDBUser(Resource):
             friend_circle_id[0] = None
             return False
 
-    def add_contributor_to_friend_circle__by_email(self, user_id, email_address, friend_circle_id, output):
-        try:
-            driver = NeoDB.get_session()
-            query = "MATCH  (n:friend_list)-[rr]->(x:friend_circle) " \
-                    " WHERE n.user_id = $user_id_ " \
-                    " AND n.email_address = $email_address_ " \
-                    " AND x.friend_circle_id_ = $friend_circle_id " \
-                    " AND type(rr) = 'CONTRIBUTOR' " \
-                    " CREATE (n)-[:CONTRIBUTOR]->(x:friend_circle) " \
-                    " RETURN x.friend_circle_id as friend_circle_id"
 
-            result = driver.run(query, user_id_=user_id, email_address_ = email_address, friend_circle_id_=friend_circle_id)
-            print("The  query is ", result.consume().query)
-            print("The  parameters is ", result.consume().parameters)
+    def add_contributor_to_friend_circle_by_email(self, contributor_email_address, friend_circle_id, output):
+        driver = NeoDB.get_session()
+        query = "MATCH  (n:User)-[rr]->(x:friend_circle) " \
+                " WHERE n.email_address = $email_address_ " \
+                " AND x.friend_circle_id_ = $friend_circle_id " \
+                " AND type(rr) = 'CONTRIBUTOR' " \
+                " CREATE (n)-[:CONTRIBUTOR]->(x:friend_circle)"
 
-            if result.peek() is None:
-                output = []
-                return True
-        except neo4j.exceptions.Neo4jError as e:
-            print("THere is a syntax error", e.message)
-            friend_circle_id[0] = None
-            return False
+        result = driver.run(query, email_address_=contributor_email_address, friend_circle_id_=friend_circle_id)
+        return True
 
+    def add_contributor_to_friend_circle_V0(self, friend_id, friend_circle_id, output):
+        driver = NeoDB.get_session()
+        query = "MATCH  (n:User)-[rr]->(x:friend_circle) " \
+                " WHERE n.user_id = $user_id_ " \
+                " AND x.friend_circle_id_ = $friend_circle_id " \
+                " AND type(rr) = 'CONTRIBUTOR' " \
+                " CREATE (n)-[:CONTRIBUTOR]->(x:friend_circle)"
+
+        result = driver.run(query, user_id_=friend_id, friend_circle_id_=friend_circle_id)
+        return True
 
     def get_friend_circle(self, friend_circle_id, loutput):
         driver = NeoDB.get_session()
         result = None
         try:
 
-            query = "MATCH (n:User)-[rr]->(x:friend_circle)<-[yy]->(m:friend_list) " \
+            query = "MATCH (n:User)-[rr]->(x:friend_circle)<-[yy]->(m:User) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ " \
-                    " return  n.user_id, n.first_name, n.last_name, n.location, n.gender, n.email_address, " \
-                    " type(rr) as creator_contributor_relationship, m.user_id, m.friend_id, m.first_name, " \
-                    " m.last_name, m.location, m.gender, m.email_address, " \
+                    " return  n.user_id, n.user_name, n.email_address, " \
+                    " type(rr) as creator_contributor_relationship, m.user_id, m.email_address, m.user_name, " \
                     "type(yy) as secret_friend"
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             counter = 0
 
             for record in result:
                 if not counter:
-                    loutput.append({"user_id": record["m.user_id"], "first_name": record["m.first_name"], "last_name" : record["m.last_name"],
-                                    "email_address": record["m.email_address"], "gender":record["m.gender"], "location": record["m.location"], "friend_circle_id": record["x.id"],
+                    loutput.append({"user_id": record["m.user_id"], "user_name": record["m.user_name"],
+                                    "email_address": record["m.email_address"], "friend_circle_id": record["x.id"],
                                     "relation": record["secret_friend"]})
                     counter = 1
-                loutput.append({"user_id": record["n.user_id"], "first_name": record["n.first_name"], "last_name" : record["n.last_name"],
-                                    "email_address": record["n.email_address"], "gender":record["n.gender"], "location": record["n.location"],
-                                "friend_circle_id": record["x.id"],
+                loutput.append({"user_id": record["n.user_id"], "user_name": record["n.user_name"],
+                                "email_address": record["n.email_address"], "friend_circle_id": record["x.id"],
                                 "relation": record["creator_contributor_relationship"]})
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
@@ -255,51 +276,90 @@ class GDBUser(Resource):
             current_app.logger.error(e.message)
             return False
 
-    def get_friend_circles(self, creator_user_id, loutput):
+    def insert_friend_circle_email_address(self, user_id, friend_id, friend_circle_id, friend_circle_name):
         driver = NeoDB.get_session()
-        result = None
+        fid = uuid.uuid4()
         try:
+            query = "MATCH (n:User), (m:User)" \
+                    " WHERE n.email_address = $user_id_ AND m.email_address = $friend_id_ " \
+                    " CREATE (n)-[:CIRCLE_CREATOR]->(x:friend_circle{friend_circle_id:$friend_circle_id_, " \
+                    " friend_circle_name:$friend_circle_name_, friend_created_dt:datetime()})-[:SECRET_FRIEND]->(m)"
 
-            query = "MATCH (n:User)-[rr]->(x:friend_circle)<-[yy]->(m:friend_list) " \
-                    "WHERE n.user_id = $user_id_ " \
-                    " return  n.user_id, n.first_name, n.last_name, n.location, n.gender, n.email_address, " \
-                    " type(rr) as creator_contributor_relationship, m.user_id, m.friend_id, m.first_name, " \
-                    " m.last_name, m.location, m.gender, m.email_address, " \
-                    "type(yy) as secret_friend"
-            result = driver.run(query, user_id_=creator_user_id)
-            counter = 0
+            result = driver.run(query, user_id_=str(user_id), friend_id_=str(friend_id), friend_circle_id_=str(fid),
+                                friend_circle_name_=friend_circle_name)
 
-            for record in result:
-                if not counter:
-                    loutput.append({"user_id": record["m.user_id"], "first_name": record["m.first_name"],
-                                    "last_name": record["m.last_name"],
-                                    "email_address": record["m.email_address"], "gender": record["m.gender"],
-                                    "location": record["m.location"], "friend_circle_id": record["x.id"],
-                                    "relation": record["secret_friend"]})
-                    counter = 1
-                loutput.append({"user_id": record["n.user_id"], "first_name": record["n.first_name"],
-                                "last_name": record["n.last_name"],
-                                "email_address": record["n.email_address"], "gender": record["n.gender"],
-                                "location": record["n.location"],
-                                "friend_circle_id": record["x.id"],
-                                "relation": record["creator_contributor_relationship"]})
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
+            record = result.single()
+            info = result.consume().counters.nodes_created
+            print("The ids are ", user_id, friend_id, info)
+            friend_circle_id[0] = fid
+            print("Successfully inserted friend circle", friend_circle_id[0])
             return True
         except neo4j.exceptions.Neo4jError as e:
-            current_app.logger.error(e.message)
+            print("THere is a syntax error", e.message)
+            friend_circle_id[0] = None
             return False
 
-    def check_user_in_friend_circle(self, user_id, friend_id, friend_circle_id, loutput):
+    def get_friend_circles(self, creator_user_id, output):
+        # Looks like use less method
+        driver = NeoDB.get_session()
+        query = "MATCH (n:User)-[rr]->(x:friend_circle)-[yy]->(m)" \
+                " WHERE n.user_id = $creator_user_id_ " \
+                " RETURN n.user_id, n.user_name, n.email_address,  m.user_id, m.user_name, m.email_address" \
+                ", x.id, type(rr) as creator_contributor_relationship, type(yy) as secret_friend " \
+                " ORDER by x.id "
+
+        result = driver.run(query, creator_user_id_=str(creator_user_id))
+        counter = 0
+        output1 = []
+        output2 = []
+        for record in result:
+            if not counter:
+                output1.append({"user_id": record["m.user_id"], "user_name": record["m.user_name"],
+                                "email_address": record["m.email_address"], "friend_circle_id": record["x.id"],
+                                "relation": record["secret_friend"]})
+                counter = 1
+            output1.append({"user_id": record["n.user_id"], "user_name": record["n.user_name"],
+                            "email_address": record["n.email_address"], "friend_circle_id": record["x.id"],
+                            "relation": record["creator_contributor_relationship"]})
+        print("The  query is ", result.consume().query)
+        print("The  parameters is ", result.consume().parameters)
+        return True
+
+    def get_all_contributors_to_friend_circle_by_circle_and_user_id(self, creator_user_id, friend_circle_id, output):
+        driver = NeoDB.get_session()
+        query = "MATCH (n:User)-[rr]->(x:friend_circle)-[yy]->(m)" \
+                " WHERE n.user_id = $creator_user_id_ and " \
+                " x.friend_circle_id = $friend_circle_id_ " \
+                " RETURN n, m, x, rr, yy "
+        result = driver.run(query, creator_user_id_=str(creator_user_id), friend_circle_id_=str(friend_circle_id))
+        counter = 0
+        output1 = []
+        output2 = []
+        for record in result:
+            if not counter:
+                output1.append({"creator_id": record["n"]["user_id"], "creator_name": record["n"]["email_address"]})
+                counter = 1
+            output2.append({"friend_id": record["m"]["user_id"], "friend_name": record["m"]["email_address"]})
+            print("The records are ", record["n"]["email_address"])
+            print("The records are ", record["m"]["email_address"])
+        output1.append(output2)
+        output.append(output1)
+        print("The output json is", output[0])
+        print("The  query is ", result.consume().query)
+        print("The  parameters is ", result.consume().parameters)
+        return True
+
+    def check_user_in_friend_circle(self, user_id, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (n:friend_list)-[rr]->(x:friend_circle)" \
+            query = "MATCH (n:User)-[rr]->(x:friend_circle)" \
                     " WHERE x.id = $friend_circle_id_ AND" \
                     " n.user_id= $user_id_ AND " \
-                    " n.friend_id = $friend_id_ " \
                     " (type(rr) = 'CIRCLE_CREATOR' OR type(rr) = 'CONTRIBUTOR') " \
                     " RETURN count(n) as user_exists, type(rr) as relation_type"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_=user_id, friend_id_ = friend_id)
+            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_=user_id)
             if result.peek() is None:
                 return False
 
@@ -320,57 +380,54 @@ class GDBUser(Resource):
             loutput.append(None)
             return False
 
-    def check_user_in_friend_circle_by_email(self, user_id, email_address, friend_circle_id, loutput):
+    def check_user_in_friend_circle_by_email(self, friend_circle_id, email_address, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (n:friend_list)-[:CIRCLE_CREATOR || :CONTRIBUTOR]->(x:friend_circle)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
-                    " n.email_address= $email_address_  AND " \
-                    " n.user_id = $user_id_ " \
-                    " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_=email_address, user_id_ = user_id)
-            for record in result:
-                print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
-            print("The  query is ", result.consume().query)
-            print("The  parameters is ", result.consume().parameters)
-            return True
-        except neo4j.exceptions.Neo4jError as e:
-            print(e.message)
-            current_app.logger.error(e.message)
-            loutput.append(None)
-            return False
-
-    def check_user_is_secret_friend(self, user_id, friend_id, friend_circle_id, loutput):
-        try:
-            driver = NeoDB.get_session()
-            query = "MATCH (x:friend_circle)-[:SECRET_FRIEND]->(n:friend_list)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
-                    " n.user_id= $user_id_ " \
-                    " AND n.friend_id = $friend_id_" \
-                    " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, friend_id_ = friend_id, user_id_=user_id)
-            for record in result:
-                print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
-            print("The  query is ", result.consume().query)
-            print("The  parameters is ", result.consume().parameters)
-            return True
-        except neo4j.exceptions.Neo4jError as e:
-            print(e.message)
-            current_app.logger.error(e.message)
-            loutput.append(None)
-            return False
-
-    def check_user_is_secret_friend_by_email(self, user_id, email_address, friend_circle_id, loutput):
-        try:
-            driver = NeoDB.get_session()
-            query = "MATCH (x:friend_circle)-[:SECRET_FRIEND]->(n:friend_list)" \
+            query = "MATCH (n:User)-[:CIRCLE_CREATOR || :CONTRIBUTOR]->(x:friend_circle)" \
                     " WHERE x.id = $friend_circle_id_ AND" \
                     " n.email_address= $email_address_ " \
-                    " AND n.user_id = $user_id_" \
                     " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_ = user_id, email_address_=email_address)
+            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_=email_address)
+            for record in result:
+                print("The user is ", record["user_exists"])
+                loutput.append(record["user_exists"])
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print(e.message)
+            current_app.logger.error(e.message)
+            loutput.append(None)
+            return False
+
+    def check_user_is_secret_friend(self, user_id, friend_circle_id, loutput):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (x:friend_circle)-[:SECRET_FRIEND]->(n:User)" \
+                    " WHERE x.id = $friend_circle_id_ AND" \
+                    " n.user_id= $user_id_ " \
+                    " RETURN count(n) as user_exists"
+            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_=user_id)
+            for record in result:
+                print("The user is ", record["user_exists"])
+                loutput.append(record["user_exists"])
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print(e.message)
+            current_app.logger.error(e.message)
+            loutput.append(None)
+            return False
+
+    def check_user_is_secret_friend_by_email(self, email_address, friend_circle_id, loutput):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (x:friend_circle)-[:SECRET_FRIEND]->(n:User)" \
+                    " WHERE x.id = $friend_circle_id_ AND" \
+                    " n.email_address= $email_address_ " \
+                    " RETURN count(n) as user_exists"
+            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_=email_address)
             for record in result:
                 print("The user is ", record["user_exists"])
                 loutput.append(record["user_exists"])
@@ -403,15 +460,14 @@ class GDBUser(Resource):
             loutput.append(None)
             return False
 
-    def check_user_is_admin_by_email(self, user_id, email_address, friend_circle_id, loutput):
+    def check_user_is_admin_by_email(self, email_address, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (x:friend_circle)-[:CIRCLE_CREATOR]->(n:User)" \
                     " WHERE x.id = $friend_circle_id_ AND" \
-                    " n.email_address= $email_address_  AND " \
-                    " n.user_id = $user_id_" \
+                    " n.email_address= $email_address_ " \
                     " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_ = user_id, email_address_=email_address)
+            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_=email_address)
             for record in result:
                 print("The user is ", record["user_exists"])
                 loutput.append(record["user_exists"])
@@ -427,10 +483,9 @@ class GDBUser(Resource):
     def check_friend_circle_with_admin_and_secret_friend(self, friend_user_id, secret_user_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (x:User)-[:CIRCLE_CREATOR]->(n:friend_circle)-[SECRET_FRIEND]->(y:friend_circle)" \
+            query = "MATCH (x:User)-[:CIRCLE_CREATOR]->(n:friend_circle)-[SECRET_FRIEND]->(y:User)" \
                     " WHERE x.user_id = $friend_user_id_ AND" \
-                    " y.user_id = $friend_user_id_  AND" \
-                    " y.friend_id = $secret_friend_id_" \
+                    " y.user_id = $secret_friend_id_  AND" \
                     " n.friend_circle_id = $friend_circle_id_ " \
                     " RETURN count(n) as user_exists"
             result = driver.run(query, friend_user_id_=friend_user_id, secret_user_id_=secret_user_id)
@@ -446,16 +501,15 @@ class GDBUser(Resource):
             loutput.append(None)
             return False
 
-    def check_friend_circle_with_admin_and_secret_friend_by_email(self, user_id, email_address, loutput):
+    def check_friend_circle_with_admin_and_secret_friend_by_email(self, friend_user_id, email_address, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (x:User-[:CIRCLE_CREATOR]->(n:friend_circle)-[SECRET_FRIEND]->(y:friend_circle)" \
+            query = "MATCH (x:User-[:CIRCLE_CREATOR]->(n:friend_circle)-[SECRET_FRIEND]->(y:User)" \
                     " WHERE x.user_id = $friend_user_id_ AND" \
-                    " AND y.user_id = $friend_user_id_" \
                     " y.email_address = $email_address_  AND" \
                     " n.friend_circle_id = $friend_circle_id_ " \
                     " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_user_id_=user_id, email_address_=email_address)
+            result = driver.run(query, friend_user_id_=friend_user_id, email_address_=email_address)
 
             for record in result:
                 print("The user is ", record["user_exists"])

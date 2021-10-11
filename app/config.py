@@ -30,6 +30,10 @@ class DevelopmentConfig(Config):
     # Logging Setup
     LOG_TYPE = "watched"  # Default is a Stream handler
     LOG_LEVEL = "INFO"
+    REDIS_HOST="127.0.0.1"
+    REDIS_PORT=6379
+    REDIS_PASSWORD="rajuvedu123@"
+    REDIS_DBNAME=0
 
     # File Logging Setup
     LOG_DIR = "/home/krissrinivasan/python/logs"
@@ -58,7 +62,10 @@ class TestingConfig(Config):
     # Logging Setup
     LOG_TYPE = "watched"  # Default is a Stream handler
     LOG_LEVEL = "INFO"
-
+    REDIS_HOST="127.0.0.1"
+    REDIS_PORT=6379
+    REDIS_PASSWORD="rajuvedu123@"
+    REDIS_DBNAME=0
     # File Logging Setup
     LOG_DIR = "/home/krissrinivasan/python/logs"
     APP_LOG_NAME = "app.log"
@@ -84,7 +91,10 @@ class ProductionConfig(Config):
     # Logging Setup
     LOG_TYPE = "watched"  # Default is a Stream handler
     LOG_LEVEL = "INFO"
-
+    REDIS_HOST="127.0.0.1"
+    REDIS_PORT=6379
+    REDIS_PASSWORD="rajuvedu123@"
+    REDIS_DBNAME=0
     # File Logging Setup
     LOG_DIR = "/home/krissrinivasan/python/logs"
     APP_LOG_NAME = "app.log"
