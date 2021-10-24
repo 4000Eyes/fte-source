@@ -259,8 +259,7 @@ class SearchDB:
     def search_by_occasion_price(self, inputs, output_list):
         # occasion names should be a list
         try:
-            if inputs["sort_order"] == "ASC":
-                sort_order = 1
+            if inputs["sort_order"] == "ASC":                sort_order = 1
             else:
                 sort_order = -1
             datefilter = None
@@ -317,12 +316,19 @@ class SearchDB:
             print("The generic exception is ", e)
             return False
 
-    def get_product_detail(self, inputs, output_hash):
+    def get_product_detail(self, inputs, output_list):
         try:
-            result = self.__db_handle.self.__product_collection.find({'product_id':inputs["product_id"]})
-            output_hash = copy.deepcopy(result)
+            result = self.__db_handle.self.__product_collection.find({'product_id':{"$in": inputs["product_id"]}})
+            #DO NOT nullify or None the output list. Some functions send loaded lists for performance
+            for doc in result:
+                output_list.append(result)
             return True
+
         except errors.PyMongoError as e:
+            current_app.logger.error(e)
+            print ("The error is ", e)
+            return False
+        except Exception as e:
             current_app.logger.error(e)
             print ("The error is ", e)
             return False
@@ -367,14 +373,25 @@ class SearchDB:
                                 occasion_year_ = inputs["occasion_year"])
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
+            product_list = []
             for record in result:
                 loutput.append(
                     {"product_id": record["f.product_id"], "vote": record["r.vote"], "users": record["total_users"]})
+                product_list.append(record["f.product_id"])
+            if not self.get_product_votes(product_list, loutput):
+                current_app.logger.error("Error in getting the product details from the product votes function for friend circle id ", inputs["f.product_id"])
+                print("Error in getting the product details from the product votes function for friend circle id ", inputs[
+                    "f.product_id"])
+                return False
             return True
         except neo4j.exceptions.Neo4jError as e:
-            print("Error in executing the SQL")
+            current_app.logger.error(e.message)
+            print("Error in executing the SQL", e.message)
             return False
-
+        except Exception as e:
+            current_app.logger.error (e)
+            print ("The error is ", e)
+            return False
 
     def get_product_comments(self, friend_circle_id, product_id, occasion_name, occasion_year, loutput):
         try:
