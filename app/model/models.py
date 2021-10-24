@@ -1,4 +1,5 @@
-from app import dbx
+from app import dbx, g
+import pymongo.collection
 from flask_bcrypt import generate_password_hash, check_password_hash
 
 
@@ -7,12 +8,19 @@ class User(dbx.Document):
     email = dbx.EmailField(required=True, unique=True)
     password = dbx.StringField(required=True, min_length=6)
     user_type = dbx.IntField(required=True)
+    first_name = dbx.StringField(required=True, max_length=64)
+    last_name = dbx.StringField(required=True, max_length=64)
+    gender = dbx.StringField(required=True, max_length=2)
+    phone_number = dbx.StringField(required=True, max_length=64)
 
     def hash_password(self):
         self.password = generate_password_hash(self.password).decode('utf8')
 
     def check_password(self, password):
         return check_password_hash(self.password, password)
+
+    def delete(self, user_id):
+        dbx.user.objects.get({"user_id":user_id}).delete()
 
 
 class EmailUserQueue(dbx.Document):
@@ -52,3 +60,10 @@ class ProductDetail(dbx.Document):
     currency = dbx.StringField(max_length=10)
     site_id = dbx.StringField(max_length=128)
     country_id = dbx.IntField()
+
+class UserHelperFunctions():
+    def hash_password(self, pwd):
+        return generate_password_hash(pwd).decode('utf8')
+
+    def check_password(self, pwd, upwd):
+        return check_password_hash(pwd, upwd)

@@ -1,11 +1,13 @@
 import json
 import neo4j.exceptions
 import logging
-from flask import current_app
+from flask import current_app, g
 from flask_restful import Resource
 from .extensions import NeoDB
 import uuid
+import pymongo.collection
 from datetime import datetime
+from pymongo import errors
 
 
 # User object
@@ -40,8 +42,9 @@ class GDBUser(Resource):
             current_app.logger.info("Driver to the database is not initiated")
             print("Driver is not initiated")
             return 0
-        print("Inside the gdb user all function")
+        print("Inside the get user all function")
         try:
+
             query = "MATCH (u:User) " \
                     "WHERE u.email_address = $email_address_ " \
                     "RETURN u.user_id, u.user_type"
@@ -60,7 +63,7 @@ class GDBUser(Resource):
             output_data = None
             return False
 
-    def get_user_by_id(self, user_id, output_data):
+    def get_user_by_id(self, user_id, output_hash):
         driver = NeoDB.get_session()
         if driver is None:
             current_app.logger.info("Driver to the database is not initiated")
@@ -70,30 +73,32 @@ class GDBUser(Resource):
         try:
             query = "MATCH (u:User) " \
                     "WHERE u.user_id = $user_id_ " \
-                    "RETURN u.email_address, user_type"
+                    "RETURN u.email_address, u.user_id, u.user_type"
             results = driver.run(query, user_id_=user_id)
             if results is None:
                 print("user does not exist")
-                output_data = None
+                output_hash = None
                 return True
             for record in results:
                 print("The user is", record)
-                output_data.append(record["email_address"])
-                output_data.append(record["user_type"])
+                output_hash["email_address"] = record["u.email_address"]
+                output_hash["user_id"] = record["u.user_id"]
+                output_hash["user_type"] = record["u.user_type"]
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("THere is a syntax error", e.message, e.metadata)
-            output_data = None
+            output_hash = None
             return False
 
     def get_user_by_phone(self, phone_number, output_data):
-        driver = NeoDB.get_session()
-        if driver is None:
-            current_app.logger.info("Driver to the database is not initiated in get_user_by_phone")
-            print("Driver is not initiated get_user_by_phone")
-            return 0
-        print("Inside the gdb user all function")
+
         try:
+            driver = NeoDB.get_session()
+            if driver is None:
+                current_app.logger.info("Driver to the database is not initiated in get_user_by_phone")
+                print("Driver is not initiated get_user_by_phone")
+                return 0
+            print("Inside the gdb user all function")
             query = "MATCH (u:User) " \
                     "WHERE u.phone_number = $phone_number_ " \
                     "RETURN u.user_id, u.email_address, u.user_type"
@@ -114,91 +119,132 @@ class GDBUser(Resource):
             output_data = None
             return False
 
+    def get_user_by_email(self, email_address, output_data):
+
+        try:
+            driver = NeoDB.get_session()
+            if driver is None:
+                current_app.logger.info("Driver to the database is not initiated in get_user_by_phone")
+                print("Driver is not initiated get_user_by_phone")
+                return 0
+            print("Inside the gdb user all function")
+            query = "MATCH (u:User) " \
+                    "WHERE u.email_address = $email_address_ " \
+                    "RETURN u.user_id, u.email_address, u.user_type"
+
+            results = driver.run(query, email_address_ =email_address)
+            if results is None:
+                print("user does not exist")
+                output_data = None
+                return True
+            for record in results:
+                print("The user is", record)
+                output_data.append(record["u.user_id"])
+                output_data.append(record["u.email_address"])
+                output_data.append(record["u.user_type"])
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message, e.metadata)
+            output_data = None
+            return False
+
     def insert_user(self, user_hash, output_hash):
         try:
             driver = NeoDB.get_session()
+            txn = driver.begin_transaction()
+            output_hash["email_address"] = None
+            output_hash["user_id"] = None
             query = "CREATE (u:User) " \
-                    " SET u.email_address = $email_address_, u.user_id = $user_id, u.phone_number = $phone_number_, " \
-                    " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_" \
+                    " SET u.email_address = $email_address_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
+                    " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_," \
+                    " u.mongo_indexed = $mongo_indexed_" \
                     " RETURN u.email_address, u.user_id"
 
-            result = driver.run(query, email_address_=str(user_hash.get('email_address')),
+            result = txn.run(query, email_address_=str(user_hash.get('email_address')),
                                 password=str(user_hash.get('password')),
                                 user_id_=str(self.get_id()),
                                 gender_=user_hash.get("gender"),
+                                phone_number_ = user_hash.get("phone_number"),
                                 user_type_=user_hash.get("user_type"),
                                 first_name_ = user_hash.get("first_name"),
-                                last_name= user_hash.get("last_name"))
+                                last_name_= user_hash.get("last_name"),
+                                mongo_indexed_ = user_hash.get("mongo_indexed"))
             record = result.single()
             info = result.consume().counters.nodes_created
             if info > 0 and record is not None:
                 print("The user id is", record["u.user_id"])
                 output_hash["email_address"] = record["u.email_address"]
                 output_hash["user_id"] = record["u.user_id"]
-                return True
+            mongo_user_collection = pymongo.collection.Collection(g.db, "user")
+            mongo_user_collection.insert_one({"user_id": output_hash.get("user_id"),
+                                              "email": user_hash.get("email_address"),
+                                              "password": user_hash.get("password"),
+                                              "phone_number": user_hash.get("phone_number"),
+                                              "gender" : user_hash.get("gender"),
+                                              "first_name" : user_hash.get("first_name"),
+                                              "last_name" : user_hash.get("last_name"),
+                                              "user_type" : user_hash.get("user_type")
+                                              })
+            output_hash["mongo_indexed"] = "Y"
+            if not self.update_user(output_hash, txn):
+                txn.rollback()
+                print("Error in updating the user")
+                return {"status": "Failure in updating the inserted record in the same transaction"}, 400
+                return False
+            txn.commit()
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            txn.rollback()
+            current_app.logger.error("There is a error " + e.message)
             return False
+        except errors.PyMongoError as e:
+            txn.rollback
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+        except Exception as e:
+            txn.rollback
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+    def delete_user(self, user_id):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (u:User{user_id:$user_id_}) " \
+                    " WITH u , count(u) as c" \
+                    " DELETE u return c"
+            result = driver.run(query, user_id_ = user_id)
+            if result.peek() is None:
+                return False
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("There is a error " + e.message)
             return False
 
+    def update_user(self, user_hash, txn):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (u:User{user_id:$user_id_}) " \
+                    "SET " \
+                    " u.mongo_indexed = $mongo_indexed_ " \
+                    " return count(u.user_id) as user_count"
+            result = txn.run(query, user_id_ = user_hash.get("user_id"), mongo_indexed_ = user_hash.get("mongo_indexed") )
+            record = result.single()
+            if record is not None:
+                if record["user_count"] > 0:
+                    return True
+                return False
+            else:
+                return False
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error("There is a error " + e.message)
+            return False
     # friend circle object definition
 
     # friend_circle_id
     # friend_circle_name
     # friend_circle_created_dt
     # friend_circle_updated_dt
-
-    def insert_friend_circle(self, user_id, friend_id, friend_circle_name, friend_circle_id):
-
-            driver = NeoDB.get_session()
-            fid = uuid.uuid4()
-            try:
-                query = "MATCH (n:User), (m:friend_list)" \
-                        " WHERE n.user_id = $user_id_ AND m.friend_id = $friend_id_ and m.user_id=$user_id_" \
-                        " CREATE (n)-[:CIRCLE_CREATOR]->(x:friend_circle{friend_circle_id:$friend_circle_id_, " \
-                        "friend_circle_name:$friend_circle_name_, friend_circle_created_dt:datetime()})-[" \
-                        ":SECRET_FRIEND]->(m) " \
-                        " RETURN x.friend_circle_id as circle_id"
-
-                result = driver.run(query, user_id_=str(user_id), friend_id_=str(friend_id), friend_circle_id_=str(fid),
-                                    friend_circle_name_=friend_circle_name)
-
-                print("The  query is ", result.consume().query)
-                print("The  parameters is ", result.consume().parameters)
-                record = result.single()
-                info = result.consume().counters.nodes_created
-                print("The ids are ", user_id, friend_id, info)
-                friend_circle_id[0] = record["circle_id"]
-                print("Successfully inserted friend circle", friend_circle_id[0])
-                return True
-            except neo4j.exceptions.Neo4jError as e:
-                print("THere is a syntax error", e.message)
-                friend_circle_id[0] = None
-                return False
-
-
-
-    def add_contributor_to_friend_circle(self, user_id, friend_id, friend_circle_id, output):
-        try:
-            driver = NeoDB.get_session()
-            query = "MATCH  (n:friend_list)-[rr]->(x:friend_circle) " \
-                    " WHERE n.user_id = $user_id_ " \
-                    " AND n.friend_id = $friend_id_" \
-                    " AND x.friend_circle_id_ = $friend_circle_id " \
-                    " AND type(rr) = 'CONTRIBUTOR' " \
-                    " CREATE (n)-[:CONTRIBUTOR]->(x:friend_circle) " \
-                    " RETURN x.friend_circle_id as friend_circle_id"
-
-            result = driver.run(query, user_id_=user_id, friend_id_ = friend_id, friend_circle_id_=friend_circle_id)
-            print("The  query is ", result.consume().query)
-            print("The  parameters is ", result.consume().parameters)
-            if result.peek() is None:
-                output = []
-                return True
-        except neo4j.exceptions.Neo4jError as e:
-            print("THere is a syntax error", e.message)
-            friend_circle_id[0] = None
-            return False
 
     def add_contributor_to_friend_circle__by_email(self, user_id, email_address, friend_circle_id, output):
         try:
@@ -229,246 +275,255 @@ class GDBUser(Resource):
         result = None
         try:
 
-            query = "MATCH (n:User)-[rr]->(x:friend_circle)<-[yy]->(m:friend_list) " \
+            query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ " \
-                    " return  n.user_id, n.first_name, n.last_name, n.location, n.gender, n.email_address, " \
-                    " type(rr) as creator_contributor_relationship, m.user_id, m.friend_id, m.first_name, " \
-                    " m.last_name, m.location, m.gender, m.email_address, " \
-                    "type(yy) as secret_friend"
-            result = driver.run(query, friend_circle_id_=friend_circle_id)
-            counter = 0
+                    " RETURN  n.user_id as user_id, n.first_name as first_name, " \
+                    " n.last_name as last_name, n.gender as gender, " \
+                    " type(rr) as relationship " \
+                    " UNION " \
+                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
+                    "WHERE x.friend_circle_id = $friend_circle_id_ " \
+                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+                    " m.last_name as last_name, m.gender as gender, " \
+                    " type(rr) as relationship" \
+                    " UNION " \
+                    "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
+                    "WHERE x.friend_circle_id = $friend_circle_id_" \
+                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+                    " m.last_name as last_name, m.gender as gender, " \
+                    " type(rr) as relationship"
 
+            result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
-                if not counter:
-                    loutput.append({"user_id": record["m.user_id"], "first_name": record["m.first_name"], "last_name" : record["m.last_name"],
-                                    "email_address": record["m.email_address"], "gender":record["m.gender"], "location": record["m.location"], "friend_circle_id": record["x.id"],
-                                    "relation": record["secret_friend"]})
-                    counter = 1
-                loutput.append({"user_id": record["n.user_id"], "first_name": record["n.first_name"], "last_name" : record["n.last_name"],
-                                    "email_address": record["n.email_address"], "gender":record["n.gender"], "location": record["n.location"],
-                                "friend_circle_id": record["x.id"],
-                                "relation": record["creator_contributor_relationship"]})
+                loutput.append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
             return False
+        except Exception as e:
+            current_app.logger.error(e)
+            return False
 
-    def get_friend_circles(self, creator_user_id, loutput):
+    def get_friend_circles(self, user_id, loutput):
         driver = NeoDB.get_session()
         result = None
         try:
 
-            query = "MATCH (n:User)-[rr]->(x:friend_circle)<-[yy]->(m:friend_list) " \
+            query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
                     "WHERE n.user_id = $user_id_ " \
-                    " return  n.user_id, n.first_name, n.last_name, n.location, n.gender, n.email_address, " \
-                    " type(rr) as creator_contributor_relationship, m.user_id, m.friend_id, m.first_name, " \
-                    " m.last_name, m.location, m.gender, m.email_address, " \
-                    "type(yy) as secret_friend"
-            result = driver.run(query, user_id_=creator_user_id)
+                    " RETURN  n.user_id as user_id, n.first_name as first_name, " \
+                    " n.last_name as last_name, n.gender as gender, " \
+                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id" \
+                    " UNION " \
+                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
+                    "WHERE m.friend_id = $user_id_ " \
+                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+                    " m.last_name as last_name, m.gender as gender, " \
+                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id" \
+                    " UNION " \
+                    "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
+                    "WHERE m.friend_id = $user_id_" \
+                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+                    " m.last_name as last_name, m.gender as gender, " \
+                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id"
+
+            result = driver.run(query, user_id_=user_id)
             counter = 0
 
             for record in result:
-                if not counter:
-                    loutput.append({"user_id": record["m.user_id"], "first_name": record["m.first_name"],
-                                    "last_name": record["m.last_name"],
-                                    "email_address": record["m.email_address"], "gender": record["m.gender"],
-                                    "location": record["m.location"], "friend_circle_id": record["x.id"],
-                                    "relation": record["secret_friend"]})
-                    counter = 1
-                loutput.append({"user_id": record["n.user_id"], "first_name": record["n.first_name"],
-                                "last_name": record["n.last_name"],
-                                "email_address": record["n.email_address"], "gender": record["n.gender"],
-                                "location": record["n.location"],
-                                "friend_circle_id": record["x.id"],
-                                "relation": record["creator_contributor_relationship"]})
+                loutput.append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
             return False
+        except Exception as e:
+            current_app.logger.error(e)
+            return False
 
-    def check_user_in_friend_circle(self, user_id, friend_id, friend_circle_id, loutput):
+    def check_user_in_friend_circle(self, referred_user_id, referrer_user_id, friend_circle_id, hshOutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (n:friend_list)-[rr]->(x:friend_circle)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
-                    " n.user_id= $user_id_ AND " \
-                    " n.friend_id = $friend_id_ " \
-                    " (type(rr) = 'CIRCLE_CREATOR' OR type(rr) = 'CONTRIBUTOR') " \
+            query = "MATCH (n:friend_list)<-[rr]->(fc:friend_circle)" \
+                    " WHERE fc.friend_circle_id = $friend_circle_id_ AND" \
+                    " n.user_id= $referred_user_id_ AND " \
+                    " n.friend_id = $referrer_user_id_  " \
+                    " RETURN count(n) as user_exists, type(rr) as relation_type " \
+                    " UNION " \
+                    "MATCH (n:User)-[rr]->(fc:friend_circle)" \
+                    " WHERE fc.friend_circle_id = $friend_circle_id_ AND" \
+                    " n.user_id= $referred_user_id_  " \
                     " RETURN count(n) as user_exists, type(rr) as relation_type"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_=user_id, friend_id_ = friend_id)
-            if result.peek() is None:
-                return False
-
+            result = driver.run(query, friend_circle_id_=friend_circle_id, referred_user_id_ = referred_user_id, referrer_user_id_ = referrer_user_id)
             for record in result:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
-                loutput.append(record["relation_type"])
-
+                hshOutput["user_count"] = record["user_exists"]
+                hshOutput["relation_type"] = record["relation_type"]
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
-
-            return True
-
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
             return False
 
-    def check_user_in_friend_circle_by_email(self, user_id, email_address, friend_circle_id, loutput):
+    def check_user_in_friend_circle_by_email(self, email_address, referrer_user_id, friend_circle_id, output_hash):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (n:friend_list)-[:CIRCLE_CREATOR || :CONTRIBUTOR]->(x:friend_circle)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
+            query = "MATCH (n:friend_list)-[rr]->(fc:friend_circle)" \
+                    " WHERE fc.friend_circle_id = $friend_circle_id_ AND" \
                     " n.email_address= $email_address_  AND " \
-                    " n.user_id = $user_id_ " \
+                    " (type(rr) = 'CIRCLE_CREATOR' OR type(rr) = 'CONTRIBUTOR')  and " \
+                    " n.friend_id = $referrer_user_id_ " \
                     " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_=email_address, user_id_ = user_id)
-            for record in result:
+            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_=email_address, referrer_user_id_ = referrer_user_id)
+            record = result.single()
+            if record is not None:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
+                output_hash["user_exists"] = record["user_exists"]
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
             return False
 
-    def check_user_is_secret_friend(self, user_id, friend_id, friend_circle_id, loutput):
+    def check_user_is_secret_friend(self, referred_user_id, referrer_user_id, friend_circle_id, hshOutput):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (x:friend_circle)-[:SECRET_FRIEND]->(n:friend_list)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
-                    " n.user_id= $user_id_ " \
-                    " AND n.friend_id = $friend_id_" \
+                    " WHERE x.friend_circle_id = $friend_circle_id_ AND" \
+                    " n.user_id= $referred_user_id_ " \
+                    " AND n.friend_id = $referrer_user_id_" \
                     " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, friend_id_ = friend_id, user_id_=user_id)
-            for record in result:
+            result = driver.run(query, friend_circle_id_=friend_circle_id, referrer_user_id_ = referrer_user_id, referred_user_id_=referred_user_id)
+            record = result.single()
+            if record is not None:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
+                hshOutput["user_exists"] = record["user_exists"]
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
             return False
 
-    def check_user_is_secret_friend_by_email(self, user_id, email_address, friend_circle_id, loutput):
+    def check_user_is_secret_friend_by_email(self,  email_address, referrer_user_id, friend_circle_id, output_hash):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (x:friend_circle)-[:SECRET_FRIEND]->(n:friend_list)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
+            query = "MATCH (fc:friend_circle)-[:SECRET_FRIEND]->(n:friend_list)" \
+                    " WHERE fc.friend_circle_id = $friend_circle_id_ AND" \
                     " n.email_address= $email_address_ " \
-                    " AND n.user_id = $user_id_" \
+                    " AND n.friend_id = $referrer_user_id_" \
                     " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_ = user_id, email_address_=email_address)
-            for record in result:
+            result = driver.run(query, friend_circle_id_=friend_circle_id, referrer_user_id_ = referrer_user_id, email_address_=email_address)
+            record = result.single()
+            if record is not None:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
+                output_hash["user_exists"] = record["user_exists"]
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
             return False
 
-    def check_user_is_admin(self, user_id, friend_circle_id, loutput):
+    def check_user_is_admin(self, user_id, friend_circle_id, hshOutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (x:friend_circle)-[:CIRCLE_CREATOR]->(n:User)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
+            query = "MATCH (x:friend_circle)<-[:CIRCLE_CREATOR]-(n:User)" \
+                    " WHERE x.friend_circle_id = $friend_circle_id_ AND" \
                     " n.user_id= $user_id_ " \
                     " RETURN count(n) as user_exists"
             result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_=user_id)
-            for record in result:
+            record = result.single()
+            if record is not None:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
+                hshOutput["user_exists"] = record["user_exists"]
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
+            hshOutput = {}
             return False
 
-    def check_user_is_admin_by_email(self, user_id, email_address, friend_circle_id, loutput):
+    def check_user_is_admin_by_email(self,  email_address, friend_circle_id, output_hash):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (x:friend_circle)-[:CIRCLE_CREATOR]->(n:User)" \
-                    " WHERE x.id = $friend_circle_id_ AND" \
-                    " n.email_address= $email_address_  AND " \
-                    " n.user_id = $user_id_" \
+            query = "MATCH (fc:friend_circle)-[:CIRCLE_CREATOR]->(n:User)" \
+                    " WHERE fc.friend_circle_id = $friend_circle_id_ AND" \
+                    " n.email_address= $email_address_  " \
                     " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_circle_id_=friend_circle_id, user_id_ = user_id, email_address_=email_address)
+            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_=email_address)
             for record in result:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
+                output_hash["user_exists"] = record["user_exists"]
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
             return False
 
-    def check_friend_circle_with_admin_and_secret_friend(self, friend_user_id, secret_user_id, loutput):
+    def check_friend_circle_with_admin_and_secret_friend(self, friend_user_id, secret_user_id, output_hash):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (x:User)-[:CIRCLE_CREATOR]->(n:friend_circle)-[SECRET_FRIEND]->(y:friend_circle)" \
-                    " WHERE x.user_id = $friend_user_id_ AND" \
+            query = "MATCH (n:User)-[:CIRCLE_CREATOR]->(fc:friend_circle)-[SECRET_FRIEND]->(y:friend_circle)" \
+                    " WHERE n.user_id = $friend_user_id_ AND" \
                     " y.user_id = $friend_user_id_  AND" \
-                    " y.friend_id = $secret_friend_id_" \
-                    " n.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_user_id_=friend_user_id, secret_user_id_=secret_user_id)
-            for record in result:
+                    " y.friend_id = $secret_friend_id_ " \
+                    " RETURN count(fc.friend_circle_id) as user_exists"
+            result = driver.run(query, friend_user_id_=friend_user_id, secret_friend_id_=secret_user_id)
+            record = result.single()
+            if record is not None:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
+                output_hash["user_exists"] = record["user_exists"]
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
+
             return False
 
-    def check_friend_circle_with_admin_and_secret_friend_by_email(self, user_id, email_address, loutput):
+    def check_friend_circle_with_admin_and_secret_friend_by_email(self, friend_user_id, secret_email_address, output_hash):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (x:User-[:CIRCLE_CREATOR]->(n:friend_circle)-[SECRET_FRIEND]->(y:friend_circle)" \
-                    " WHERE x.user_id = $friend_user_id_ AND" \
-                    " AND y.user_id = $friend_user_id_" \
-                    " y.email_address = $email_address_  AND" \
-                    " n.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN count(n) as user_exists"
-            result = driver.run(query, friend_user_id_=user_id, email_address_=email_address)
-
-            for record in result:
+            query = "MATCH (n:User)-[:CIRCLE_CREATOR]->(fc:friend_circle)-[SECRET_FRIEND]->(y:friend_circle)" \
+                    " WHERE n.user_id = $friend_user_id_ " \
+                    " AND y.friend_id = $friend_user_id_ and" \
+                    " y.email_address = $email_address_  " \
+                    " RETURN count(fc.friend_circle_id) as user_exists"
+            result = driver.run(query, friend_user_id_=friend_user_id, email_address_=secret_email_address)
+            record = result.single()
+            if record is not None:
                 print("The user is ", record["user_exists"])
-                loutput.append(record["user_exists"])
-                loutput.append(record["relation_type"])
+                output_hash["user_exists"]  = record["user_exists"]
+            else:
+                current_app.logger.error("Checking if the user is secret friend cannot return an empty cursor " + secret_email_address)
+                print("Checking if the user is secret friend cannot return an empty cursor " + secret_email_address)
+                return False
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
             print(e.message)
             current_app.logger.error(e.message)
-            loutput.append(None)
             return False
+
+
+
+
 
     # interest object
     # friend_category_id
@@ -476,11 +531,12 @@ class GDBUser(Resource):
     # friend_category_create_dt
     # friend_category_update_dt
 
-    def link_user_to_web_category(self, friend_circle_id, user_id, lweb_category_id):
+    def link_user_to_web_category(self, user_id, friend_id, friend_circle_id, lweb_category_id):
         try:
             driver = NeoDB.get_session()
+            txn = driver.begin_transaction()
             for hsh_web_category_id in lweb_category_id:
-                query = "MATCH (a:User{user_id:$user_id_}), (" \
+                query = "MATCH (a:friend_list{user_id:$user_id_, friend_id:$friend_id_}), (" \
                         "b:WebCat{" \
                         "web_category_id:$web_category_id_})" \
                         " MERGE (a)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b) " \
@@ -488,51 +544,73 @@ class GDBUser(Resource):
                         " r.created_dt = $created_dt_" \
                         " ON MATCH set r.updated_dt = $updated_dt_, r.vote = $nvote_ " \
                         " RETURN r.friend_circle_id"
-                result = driver.run(query, user_id_=user_id,
+                result = txn.run(query, user_id_=user_id,
+                                    friend_id_ = friend_id,
                                     friend_circle_id_=friend_circle_id,
                                     web_category_id_=hsh_web_category_id["web_category_id"],
                                     created_dt_=self.get_datetime(),
                                     updated_dt_=self.get_datetime(),
                                     nvote_=hsh_web_category_id["vote"])
-                print("The peek is", result.peek())
-                record = result.single()
-                print("The  query is ", result.consume().query)
-                print("The  parameters is ", result.consume().parameters)
-                if record is None:
+
+                if result is None:
                     print("The combination of user and category does not exist", user_id,
                           hsh_web_category_id["web_category_id"])
+                    txn.rollback()
                     return False
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+            txn.commit()
+            return True
         except neo4j.exceptions.Neo4jError as e:
+            txn.rollback()
+            current_app.logger.error(e.message)
             print("The error is ", e.message)
+            return False
+        except Exception as e:
+            txn.rollback()
+            current_app.logger.error(e)
+            print(e)
+            return  False
 
-    def link_user_to_web_subcategory(self, friend_circle_id, user_id, lweb_subcategory_id):
+    def link_user_to_web_subcategory(self, user_id, friend_id, friend_circle_id, lweb_subcategory_id):
         try:
             driver = NeoDB.get_session()
+            txn = driver.begin_transaction()
             for hsh_web_subcategory_id in lweb_subcategory_id:
-                query = "MATCH (a:User{user_id:$user_id_),(" \
-                        "b:WebCat{" \
+                query = "MATCH (a:friend_list{user_id:$user_id_, friend_id:$friend_id_}),(" \
+                        "b:WebSubCat{" \
                         "web_subcategory_id:$web_subcategory_id_}) " \
                         " MERGE (a)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b)" \
                         " ON CREATE set r.friend_circle_id =$friend_circle_id_ , r.vote = $nvote_," \
                         " r.created_dt = $created_dt_" \
                         " ON MATCH set r.updated_dt = $updated_dt_, r.vote = $nvote_ " \
                         " RETURN r.friend_circle_id"
-                result = driver.run(query, user_id_=user_id,
+                result = txn.run(query, user_id_=user_id,
+                                    friend_id_ = friend_id,
                                     friend_circle_id_=friend_circle_id,
                                     web_subcategory_id_=hsh_web_subcategory_id["web_subcategory_id"],
                                     created_dt_=self.get_datetime(),
                                     updated_dt_=self.get_datetime(),
-                                    nvote_=hsh_web_subcategory_id["vote]"])
-                record = result.single()
-                print("The  query is ", result.consume().query)
-                print("The  parameters is ", result.consume().parameters)
-                if record is None:
+                                    nvote_=hsh_web_subcategory_id["vote"])
+                if result is None:
                     print("The combination of user and category does not exist", user_id,
                           hsh_web_subcategory_id["web_subcategory_id"])
+                    txn.rollback()
                     return False
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+            txn.commit()
+            return True
         except neo4j.exceptions.Neo4jError as e:
+            txn.rollback()
+            current_app.logger.error(e.message)
             print("The error is ", e.message)
-
+            return False
+        except Exception as e:
+            txn.rollback()
+            current_app.logger.error(e)
+            print(e)
+            return False
     def delete_link_user_to_category(self, friend_circle_id, user_id, web_category_id):
         try:
             driver = NeoDB.get_session()
@@ -569,42 +647,40 @@ class GDBUser(Resource):
     def get_category_interest(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebCat) " \
-                    "RETURN count(a.user) as users, " \
+            query = "MATCH (a:friend_list)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebCat) " \
+                    "RETURN count(a.user_id) as users, " \
                     "sum(r.vote) as votes, " \
                     "b.category_id as category_id," \
                     " b.category_name as category_name "
             result = driver.run(query, friend_circle_id_=friend_circle_id)
-            counter = 0
             for record in result:
-                counter = counter + 1
-                loutput.append(record)
+                loutput.append(record.data())
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the query", e)
             return False
-        print("The  query is ", result.consume().query)
-        print("The  parameters is ", result.consume().parameters)
-        return True
+
 
     def get_subcategory_interest(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebSubCat) " \
-                    "RETURN count(a.user) as users, " \
+            query = "MATCH (a:friend_list)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebSubCat) " \
+                    "RETURN count(a.user_id) as users, " \
                     "sum(r.vote) as votes, " \
                     "b.subcategory_id as subcategory_id," \
                     " b.subcategory_name as subcategory_name "
             result = driver.run(query, friend_circle_id_=friend_circle_id)
-            counter = 0
             for record in result:
-                counter = counter + 1
-                loutput.append(record)
+                loutput.append(record.data())
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the query", e)
             return False
-        print("The  query is ", result.consume().query)
-        print("The  parameters is ", result.consume().parameters)
-        return True
+
 
     # friend_occasion
 
@@ -614,113 +690,148 @@ class GDBUser(Resource):
     # friend_occasion_create_dt
     # friend_occasion_update_dt
 
-    def add_occasion(self, user_id, friend_circle_id, occasion_id, occasion_date):
+    def add_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, occasion_date, status, output_hash):
         try:
-
+            print ("Inside the add occasion function")
             driver = NeoDB.get_session()
-            query = " MATCH(a:User{user_id:$user_id_})," \
-                    " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
-                    " (b:occasion{occasion_id:$occasion_id_}) " \
-                    " MERGE (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
-                    " ON CREATE set f.occasion_id = $occasion_id_, f.fc_create_dt = created_dt_, " \
-                    " r.friend_circle_id=$friend_circle_id_" \
-                    " f.friend_occasion_date = occasion_date_ " \
-                    " f.friend_occasion_status = 0 " \
-                    " ON MATCH set b.status = $status_, updated_dt = $updated_dt_ " \
-                    " f.friend_occasion_date = $occasion_date_" \
-                    " f.friend_occasion_status = $status" \
-                    " RETURN f.friend_circle_id"
-            result = driver.run(query, created_dt_=self.get_datetime(),
+            txn = driver.begin_transaction()
+            select_occasion = " MATCH (a:friend_list{user_id:$user_id_, friend_id:$friend_id_})-[r:OCCASION]" \
+                              "->(f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})" \
+                              "<-[x:IS_MAPPED]-(b:occasion{occasion_id:$occasion_id_})" \
+                              " RETURN count(f.friend_circle_id) as friend_occasion "
+            result = txn.run(select_occasion, user_id_=str(user_id), friend_id_=str(friend_id),
+                             friend_circle_id_ = str(friend_circle_id), occasion_id_=occasion_id)
+
+            if result is not None:
+                record = result.single()
+                if record["friend_occasion"] <= 0:
+                    query = " CREATE (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_, " \
+                            "occasion_date:$occasion_date_, created_dt:$created_dt_, friend_occasion_status:$friend_occasion_status_}) " \
+                            " WITH f " \
+                            " MATCH(a:friend_list{user_id:$user_id_, friend_id:$friend_id_})," \
+                            " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
+                            " (b:occasion{occasion_id:$occasion_id_}) " \
+                            " MERGE (a)-[:OCCASION]->(f)<-[:IS_MAPPED]-(b) " \
+                            " RETURN f.friend_circle_id as friend_circle_id"
+
+                    query_result = txn.run(query, created_dt_=self.get_datetime(),
                                 friend_circle_id_=friend_circle_id,
                                 user_id_=user_id,
+                                friend_id_ = friend_id,
                                 occasion_id_=occasion_id,
                                 occasion_date_=occasion_date,
-                                updated_dt_=self.get_datetime()
+                                friend_occasion_status_ = status,
+                                updated_dt_= self.get_datetime()
                                 )
 
-            print("The  query is ", result.consume().query)
-            print("The  parameters is ", result.consume().parameters)
+                    if query_result is None:
+                        current_app.logger.error("Unable to create occasion for ", user_id, friend_id)
+                        print("Unable to create occasion for ", user_id, friend_id)
+                        return False
+                    for record in query_result:
+                        output_hash["friend_circle_id"] = record["friend_circle_id"]
 
-            if result.peek() is None:
-                return False
-            record = result.single()
+                    print("The  query is ", query_result.consume().query)
+                    print("The  parameters is ", query_result.consume().parameters)
+
+            txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("The error is ", e.message)
+            txn.rollback()
             return False
 
-    def approve_occasion(self, friend_circle_id, admin_user_id, referrer_user_id, occasion_id, status):
+    def approve_occasion(self,user_id, friend_id, friend_circle_id, occasion_id, status, output_hash):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(o:occasion),  " \
-                    " (b:User)-[:CIRCLE_CREATOR]->(fc:friend_circle)" \
-                    " ON MATCH set f.friend_occasion_status = $status_ " \
-                    " WHERE a.user_id = $referrer_user_id_ " \
-                    " AND b.user_id = $admin_user_id-" \
-                    " AND f.friend_circle_id = $friend_circle_id_" \
-                    " AND fc.friend_circle_id = $friend_circle_id_ " \
-                    " AND f.occasion_id = o.occasion_id " \
-                    " AND o.occasion_id = $occasion_id_ " \
-                    " RETURN f.friend_occasion_id"
+            txn = driver.begin_transaction()
+            query = "MATCH "\
+                    " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
+                    " (b:User{user_id:$friend_id_})-[:CIRCLE_CREATOR]->(fc:friend_circle{friend_circle_id:$friend_circle_id_})" \
+                    " set f.friend_occasion_status = $status_ , f.updated_dt = $updated_dt_" \
+                    " RETURN f.friend_circle_id as friend_circle_id"
 
-            result = driver.run(query,
-                                referrer_user_id_=referrer_user_id,
-                                admin_user_id_=admin_user_id,
+            result = txn.run(query,
+                                friend_id_ = friend_id,
                                 friend_circle_id_=friend_circle_id,
                                 status_=status,
-                                user_id_=referrer_user_id,
-                                occasion_id_=occasion_id)
-            if result.peek() is None:
-                return False
-            record = result.single()
+                                occasion_id_=occasion_id,
+                                updated_dt_ = self.get_datetime())
+            if result is not None:
+                for record in result:
+                    output_hash["friend_circle_id"] = record["friend_circle_id"]
+            else:
+                    current_app.logger.error("Unable to approve the vote for ", user_id, friend_id, friend_circle_id)
+                    print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+                    return False
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
+            if len(output_hash) <= 0:
+                current_app.logger.error("Unable to approve the vote for ", user_id, friend_id, friend_circle_id)
+                print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+                txn.rollback()
+                return False
+
+            txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
+            txn.rollback()
+            current_app.logger.error(e.message)
+            print(e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print(e)
             return False
 
     def get_occasion(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
+            query = "MATCH (a:friend_list)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
                     " WHERE " \
                     " f.friend_circle_id = $friend_circle_id_ " \
-                    " AND r.friend_circle_id = $friend_circle_id_" \
-                    " RETURN a.user_id, f.friend_occasion_date, f.friend_occasion_id, b.occasion_name "
+                    " RETURN a.user_id as user_id, a.friend_id as creator_user_id, f.occasion_date as occasion_date , " \
+                    "f.occasion_id as occasion_id, b.occasion_name as occasion_name"
             result = driver.run(query,
                                 friend_circle_id_=friend_circle_id)
-            counter = 0
+            if result is None:
+                loutput = None
             for record in result:
-                loutput.append({"occasion_id": record["occasion_id"],
-                                "occasion_type": record["occasion_type"],
-                                "occasion_date": record["occasion_date"],
-                                "contributor_user_id": record["contributor_user_id"]})
-                counter = counter + 1
-                print("The occasions are ", record["occasion_type"], record["occasion_date"])
+                loutput.append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print(e.message)
             return False
 
-    def vote_occasion(self, occasion_id, user_id, friend_circle_id, flag, value):
+    def vote_occasion(self,  user_id, friend_id, friend_circle_id, occasion_id, flag, value, output_hash):
         try:
             driver = NeoDB.get_session()
-            query = " MATCH (a:User{user_id:$user_id_}), " \
-                    "(b:friend_occasion{friend_circle_id:$friend_circle_id,  occasion_id :$occasion_id_})" \
-                    " MERGE (a:User)-[r:VOTE_OCCASION]->(b:friend_occasion) " \
-                    " ON MATCH set r.status= flag, r.updated_dt= $updated_dt_ " \
+            query = " MATCH (a:friend_list{user_id:$user_id_, friend_id:$friend_id_}), " \
+                    "(b:friend_occasion{friend_circle_id:$friend_circle_id_,  occasion_id :$occasion_id_})" \
+                    " MERGE (a)-[r:VOTE_OCCASION]->(b) " \
+                    " ON MATCH set r.status= $status_, r.updated_dt= $updated_dt_, " \
                     " r.value = $value_" \
-                    " ON CREATE set r.status = flag, r.created_dt=$created_dt_, " \
-                    " r.friend_circle_id = $friend_circle_id_" \
-                    " r. value = $value_" \
-                    " RETURN b.occasion_id as occasion_id"
+                    " ON CREATE set r.status = $status_, r.created_dt=$created_dt_, " \
+                    " r.friend_circle_id = $friend_circle_id_," \
+                    " r.value = $value_" \
+                    " RETURN b.friend_circle_id as friend_circle_id"
 
-            result = driver.run(query, user_id_=user_id, friend_circle_id_=friend_circle_id, occasion_id_=occasion_id,
-                                value_=value)
-            if result.peek() is None:
+            result = driver.run(query, user_id_=user_id, friend_id_ = friend_id, friend_circle_id_=friend_circle_id, occasion_id_=occasion_id,
+                                value_=value, status_ = flag, updated_dt_ = self.get_datetime(), created_dt_=self.get_datetime())
+            if result is not None:
+                for record in result:
+                    output_hash["friend_circle_id"] = record["friend_circle_id"]
+            else:
+                current_app.logger.error("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+                print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
                 return False
-            record = result.single()
+            if output_hash["friend_circle_id"] is None:
+                current_app.logger.error("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+                print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+                return False
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the SQL", e)
@@ -729,17 +840,15 @@ class GDBUser(Resource):
     def get_occasion_votes(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:VOTE_OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
-                    " WHERE f.fid = $friend_circle_id_" \
-                    " AND f.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN a.User, r.status, r.value, occasion_id "
+            query = "MATCH (a:friend_list)-[r:VOTE_OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
+                    " WHERE f.friend_circle_id = $friend_circle_id_ " \
+                    " RETURN a.user_id as user_id, a.friend_id as friend_id, r.status as status, r.value as value, b.occasion_id as occasion_id "
             result = driver.run(query, friend_circle_id_=friend_circle_id)
-            counter = 0
+            if result is None:
+                current_app.logger.error("Houston we have a problem. No votes")
+                loutput = None
             for record in result:
-                loutput.append(
-                    {"occasion_id": record["occasion_id"], "status": record["status"], "users": record["total_users"]})
-                counter = counter + 1
-            loutput.append({"rows": counter})
+                loutput.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the SQL")

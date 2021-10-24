@@ -1,11 +1,10 @@
-from flask import Response, request, current_app
+from flask import request, current_app, jsonify
 from model.gdbmethods import GDBUser
 from model.friendlistdb import FriendListDB
 from flask_restful import Resource
 from model.models import EmailUserQueue, FriendCircleApprovalQueue
-from .classhelper import FriendCircleHelper
+from model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
-import datetime
 import json
 
 
@@ -13,9 +12,8 @@ class ManageFriendCircle(Resource):
     FAKE_USER_TYPE = 1
     FAKE_USER_PASSWORD = "TeX54Esa"
 
-    @jwt_required()
+   # @jwt_required()
     def post(self):
-        print ("Inside the authorization function")
         try:
             objGDBUser = GDBUser()
             objFriend = FriendListDB()
@@ -23,11 +21,20 @@ class ManageFriendCircle(Resource):
             if content is None:
                 current_app.logger.error("No parameters send into the friend circle api (post). Check")
                 return {"status":"failure"}, 500
-            request_id = content["request_id"] if "request_id" in content else None
+            if content["request_id"] is None:
+                current_app.logger.error("No request id in the request")
+                return {"status": "Request id is missing"}, 500
+
+            request_id = content["request_id"]
+
+            if request_id == 5 and content["user_list"] is None:
+                current_app.logger.error("User list is a key parameter for request id 5 and it is missine")
+                return {"status": "User list is a key parameter for request id 5 and it is missine"}, 500
+
             user_list = content["user_list"] if "user_list" in content else None
 
             user_info = {}
-            user_info["creator_user_id"] = content["creator_user_id"] if "creator_user_id" in content else None
+            user_info["admin_friend_id"] = content["admin_friend_id"] if "admin_friend_id" in content else None
             user_info["referred_user_id"] = content["referred_user_id"] if "referred_user_id" in content else None
             user_info["referrer_user_id"] =  content["referrer_user_id"] if "referrer_user_id" in content else None
             user_info["friend_circle_id"] = content["friend_circle_id"] if "friend_circle_id" in content else None
@@ -50,30 +57,31 @@ class ManageFriendCircle(Resource):
 
             # Note: Admin should be able to add friends without approval.
 
-            output.clear()
+            output = {}
             if request_id == 1:
-                if objGDBUser.check_user_in_friend_circle(user_info["creator_user_id"], user_info["referred_user_id"], user_info["friend_circle_id"], output) and output[0] > 0:
-                    return {"status": "friend is already part of the friend circle"}, 400
-                if objGDBUser.check_user_is_secret_friend(user_info["creator_user_id"], user_info["referred_user_id"], user_info["friend_circle_id"], output) and output[0] > 0:
-                    return {"status": "secret friend cannot be added as friend"}, 400
-                if objGDBUser.check_user_is_admin(user_info["referred_user_id"], user_info["friend_circle_id"], output) and output[0] > 0:
-                    is_admin = 1
-                if is_admin:
-                    if objFriend.insert_friend(user_info, output) and objGDBUser.add_contributor_friend_circle(user_info["creator_user_id"], user_info["referred_user_id"],
-                                                                                                               user_info["friend_circle_id"], output) :
-                        return {"status": "successfully added friend to the circle"}
-                if not is_admin:
-                    # insert into the approval table.
-                    FriendCircleApprovalQueue.friend_circle_id = user_info["friend_circle_id"]
-                    FriendCircleApprovalQueue.referred_user_id = user_info["referred_user_id"]
-                    FriendCircleApprovalQueue.referring_user_id = user_info["referrer_user_id"]
-                    FriendCircleApprovalQueue.friend_circle_admin_id = user_info["creator_user_id"]
-                    FriendCircleApprovalQueue.first_name = user_info["first_name"]
-                    FriendCircleApprovalQueue.last_name = user_info["last_name"]
-                    FriendCircleApprovalQueue.gender = user_info["gender"]
-                    FriendCircleApprovalQueue.location = user_info["location"]
-                    FriendCircleApprovalQueue.status = 0
-                    FriendCircleApprovalQueue.save()
+                if not objGDBUser.get_user_by_id(user_info["referred_user_id"], output):
+                    current_app.logger.error("Error in checking the user table for id", user_info["referred_user_id"])
+                    return {"status": "Failure in accessing the user table for " + user_info["referred_user_id"]}, 400
+                if output.get("user_id") is not None:
+                    user_info["linked_status"] = 1
+                    user_info["linked_user_id"] = output.get("user_id")
+                else:
+                    user_info["linked_status"] = 0
+                    user_info["linked_user_id"] = None
+                output = {}
+                if objGDBUser.check_user_in_friend_circle( user_info["referred_user_id"], user_info["referrer_user_id"], user_info["friend_circle_id"], output):
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        return {"status": "friend is already part of the friend circle"}, 400
+                output = {}
+                if objGDBUser.check_user_is_secret_friend(user_info["referrer_user_id"],user_info["referrer_user_id"], user_info["friend_circle_id"], output):
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        return {"status": "secret friend cannot be added as friend"}, 400
+                output = {}
+                if objGDBUser.check_user_is_admin(user_info["referrer_user_id"], user_info["friend_circle_id"], output) :
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        is_admin = 1
+                        if objFriend.add_friend_to_the_list_and_circle(user_info, output) :
+                            return {"status": "successfully added friend to the circle"},200
                 return {"status": "success"}, 200
 
             if request_id == 2:
@@ -81,82 +89,69 @@ class ManageFriendCircle(Resource):
                 # Check if there is a friend circle exists with the recommended email address as a member or a secret
                 # friend
                 output.clear()
-                if objGDBUser.check_user_in_friend_circle_by_email( user_info["creator_user_id"],user_info["email_address"],
-                                                                    user_info["friend_circle_id"],
-                                                                   output) and output[0] > 0:
-                    return {"status": "The user already exists in the friend circle"}, 400
-                if objGDBUser.check_user_is_secret_friend_by_email(user_info["creator_user_id"],
-                                                                   user_info["email_address"],
-                                                                   output) and output[0] > 0:
-                    return {"status": "The user exists and the person is also the secret friend of the circle"}, 400
-                if objGDBUser.check_user_is_admin_by_email(user_info["creator_user_id"],
-                                                           user_info["email_address"],
-                                                           user_info["friend_circle_id"],output) and \
-                        output[0] > 0:
-                    is_admin = 1
-                if not objFriend.insert_friend(user_info, output):
-                    return {"status": "Error"}, 400
-                # Send an email asking the user to register
-                EmailUserQueue.friend_circle_id = user_info["friend_circle_id"]
-                EmailUserQueue.email = user_info["email_address"]
-                EmailUserQueue.friend_circle_admin_id = user_info["creator_user_id"]
-                EmailUserQueue.referred_user_id = user_info["referred_user_id"]
-                EmailUserQueue.status = 0
-                EmailUserQueue.save()
-                # Insert a row into friend circle approval queue and the registration status should be off until the
-                # user registers
-                FriendCircleApprovalQueue.friend_circle_id = user_info["friend_circle_id"]
-                FriendCircleApprovalQueue.email_address = user_info["email_address"]
-                FriendCircleApprovalQueue.referring_user_id = user_info["referrer_user_id"]
-                FriendCircleApprovalQueue.friend_circle_admin_id = user_info["creator_user_id"]
-                FriendCircleApprovalQueue.first_name = user_info["first_name"]
-                FriendCircleApprovalQueue.last_name = user_info["last_name"]
-                FriendCircleApprovalQueue.gender = user_info["gender"]
-                FriendCircleApprovalQueue.location = user_info["location"]
-                FriendCircleApprovalQueue.status = 0
-                FriendCircleApprovalQueue.registration_complete_status = 0
-                FriendCircleApprovalQueue.save()
-                return {"status": "Success"}, 200
+                if objGDBUser.check_user_in_friend_circle_by_email( user_info["email_address"],user_info["referrer_user_id"],
+                                                                    user_info["friend_circle_id"], output):
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        return {"status": "The user already exists in the friend circle"}, 400
+                if objGDBUser.check_user_is_secret_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], user_info["friend_circle_id"],
+                                                                   output) :
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        return {"status": "The user exists and the person is also the secret friend of the circle"}, 400
+                if objGDBUser.check_user_is_admin( user_info["referrer_user_id"],
+                                                           user_info["friend_circle_id"],output):
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        is_admin = 1
+                        output = {}
+                        if not objGDBUser.get_user(user_info["email_address"], output):
+                            current_app.logger.error("Error in checking the user table for id",
+                                                     user_info["referred_user_id"])
+                            return {"status": "Failure in accessing the user table for " + user_info[
+                                "referred_user_id"]}, 400
+                        if output.get("user_id") is not None:
+                            user_info["linked_status"] = 1
+                            user_info["linked_user_id"] = output.get("user_id")
+                        else:
+                            user_info["linked_status"] = 0
+                            user_info["linked_user_id"] = None
+                        if not objFriend.insert_friend_wrapper(user_info, output):
+                            current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
+                            print("Unable to insert friend into the friend list " + user_info["email_address"])
+                            return {"status": "Unable to insert friend into the friend list " + user_info["email_address"]}, 400
+                return {"status" : "Success"}, 200
             if request_id == 3:
-                output.clear()
+                output = {}
                 print ("Calling request 3 function")
-                if objGDBUser.check_friend_circle_with_admin_and_secret_friend(user_info["refferer_user_id"],
+                if objGDBUser.check_friend_circle_with_admin_and_secret_friend(user_info["referrer_user_id"],
                                                                                user_info["referred_user_id"],
-                                                                               output) and output[0] > 0:
-                    return {"status": "Secret Group with this combination exists"}, 400
-                if not objFriend.insert_friend(user_info, output):
-                    return {"status": "Error"}, 400
-                if objGDBUser.insert_friend_circle(user_info["referrer_user_id"],
-                                                   user_info["referred_user_id"],
-                                                   user_info["friend_circle_name"], output):
-                    return {'friend_circle_id': str(user_info["friend_circle_id"])}, 200
+                                                                               output) :
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        return {"status": "Secret Group with this combination exists"}, 400
+                if not objFriend.create_secret_friend(user_info, output):
+                    print( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
+                    current_app.logger.error( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
+                    return {"status": "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend"}, 400
                 return {"status" : "Error in creating the secret group"}, 200
             if request_id == 4:
-                if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_email(user_info["creator_user_id"],
-                                                                                        user_info["referred_email_address"],
-                                                                                        output) and output[0] > 0:
-                    return {"status" : "secret circle for this email exists"}, 400
-                if not objFriend.insert_friend(user_info, output):
-                    print ("Unable to insert or get the friend id for the given email address ", user_info["email_address"])
-                    return {"status": "Failed to create friend circle"}, 400
-
-                if objGDBUser.insert_friend_circle(user_info["creator_user_id"], output[0], user_info["friend_circle_name"], output):
-                    return {'friend_circle_id': str(output[0])}, 200
-                return {"status" : "Error in creating the secret group"}, 400
+                if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_email(user_info["referrer_user_id"],
+                                                                                        user_info["email_address"],
+                                                                                        output) :
+                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
+                        return {"status" : "secret circle for this email exists"}, 400
+                output = {}
+                if objFriend.create_secret_friend(user_info, output):
+                    return {"status": "successfully added friend to the circle"}, 200
 
             if request_id == 5: # this is for whatsapp integration
                 print ("The user list is ", user_list)
-                user_info = list(eval(user_list))
                 objFriendCircleHelper = FriendCircleHelper()
-                if not objFriendCircleHelper.create_circles_from_whatsapp(user_info,user_info["creator_user_id"]):
+                if not objFriendCircleHelper.create_circles_from_whatsapp(user_list,user_info["admin_friend_id"]):
                     return {"status": "Failure in creating circles from the whatsapp contact"}, 400
-                return {"status": "success"}, 400
+                return {"status": "success"}, 200
             if request_id == 100: # purely for testing purposes
                 output.clear()
                 print ("Inside request 5")
                 if objGDBUser.check_user_in_friend_circle(user_info["referred_user_id"], user_info["friend_circle_id"],
                                                                    output) and output[0] > 0:
-                    print ("True")
                     return {"status": "The user already exists in the friend circle"}, 400
                 else:
                     print ("False")
@@ -165,7 +160,7 @@ class ManageFriendCircle(Resource):
             print ("The error is ", e)
             return {"Error": "Error in inserting the circle"}, 400
 
-    @jwt_required()
+    #@jwt_required()
     def get(self):
 
         content = request.get_json(force=True)
@@ -185,14 +180,16 @@ class ManageFriendCircle(Resource):
             # Get specific friend circle data
             print("Enter in the request id 1 loop")
             if objGDBUser.get_friend_circle(friend_circle_id, output):
-                xx = json.dumps(str(output))
-                return {'friend_circle_id': xx}, 200
+                data = json.dumps(output)
+                return {'friend_circle_id': data}, 200
+            else:
+                return {"status":"Failure"}, 400
         if request_id == 2:
             if not objGDBUser.get_friend_circles(user_id, output):
                 print('There is an issue getting friend_circle_data for ', user_id)
                 return {"Erros": "unable to get friend circle information. retry"}, 500
-            xx = json.dumps(str(output))
-            return {'friend_circle_id': xx}, 200
+            data = json.dumps(output)
+            return {'friend_circle_id': data}, 200
 
     def delete(self):
         return {"Item successfully deleted": "thank you"}, 200
@@ -203,15 +200,22 @@ class InterestManagement(Resource):
 
     # get count of users by interest in friend circle
     # interest count by various attributes
-    @jwt_required()
+    #@jwt_required()
     def post(self):
         try:
             content = request.get_json()
             if content is None:
                 current_app.logger.error("No parameters send into the interest api (post). Check")
                 return {"status":"failure"}, 500
+
             user_id = content["user_id"] if "user_id" in content else None
+            creator_user_id = content["creator_user_id"] if "creator_user_id" in content else None
             friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
+
+            if user_id is None or creator_user_id is None or friend_circle_id is None:
+                current_app.logger.error("Required parameters are not sent (user_id, content_user_id, friend_circle_id)")
+                print("Required parameters are not sent (user_id, content_user_id, friend_circle_id)")
+                return {"status":"Failure"}, 400
             list_category_id = content["list_category_id"] if "list_category_id" in content else None #this should be list of hashs with each member having category_id and vote
             list_subcategory_id = content[
                 "list_subcategory_id"] if "list_subcategory_id" in content else None  # this should be list of hashs with each member having subcategory_id and vote
@@ -221,15 +225,16 @@ class InterestManagement(Resource):
             print ("THe list category id is", list_category_id)
             if request_id == 1: # link use to category and sub category
                 print ("The request is", request.path, request.host_url, request.date, request.blueprint, request.endpoint, request.environ)
-                loutput = []
-                if objGDBUser.check_user_in_friend_circle( user_id,friend_circle_id, loutput) and loutput[0] > 0 and loutput[1] != "SECRET_FRIEND":
-                    print ("Checked the user successfully")
-                    if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(friend_circle_id, user_id, list_category_id):
-                        print ("Issue inserting the relationship")
-                        return {"status":"Failure"}, 400
-                    if len(list_subcategory_id) > 0 and not objGDBUser.link_user_to_web_subcategory(friend_circle_id, user_id, list_category_id):
-                        print ("Issue inserting the relationship")
-                        return {"status":"Failure"}, 400
+                hshOutput = {}
+                if objGDBUser.check_user_in_friend_circle( user_id,creator_user_id, friend_circle_id, hshOutput) :
+                    if  len(hshOutput) > 0 and  hshOutput["relation_type"] != "SECRET_FRIEND":
+
+                        if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(user_id, creator_user_id, friend_circle_id, list_category_id):
+                            print ("Issue inserting the relationship")
+                            return {"status":"Failure"}, 400
+                        if len(list_subcategory_id) > 0 and not objGDBUser.link_user_to_web_subcategory( user_id, creator_user_id,friend_circle_id, list_subcategory_id):
+                            print ("Issue inserting the relationship")
+                            return {"status":"Failure"}, 400
                 else:
                     print ("The user is not part of the circle or a secret friend trying to hack the circle")
                     return {"status": "Failure"}, 400
@@ -239,7 +244,7 @@ class InterestManagement(Resource):
             return {"status":"Failure"}, 400
 
 
-    @jwt_required()
+    #jwt_required()
     def get(self):
 
         content = request.get_json()
@@ -248,7 +253,7 @@ class InterestManagement(Resource):
             return {"status": "failure"}, 500
         user_id = content["user_id"] if "user_id" in content else None
         friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
-        interest_category_id = content["interest_category_id"] if "interest_category_id" in content else None
+        #interest_category_id = content["interest_category_id"] if "interest_category_id" in content else None
         request_id = content["request_id"] if "request_id" in content else None
 
         objGDBUser = GDBUser()
@@ -257,14 +262,14 @@ class InterestManagement(Resource):
         # get all interests by friend circle
         if objGDBUser.get_category_interest(friend_circle_id, loutput):
             print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-            data = json.dumps(str(loutput))
+            data = json.dumps(loutput)
         else:
             return {"status": "failure"}, 400
         loutput1 = []
         if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
             print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
             loutput.append(loutput1)
-            data = json.dumps(str(loutput))
+            data = json.dumps(loutput)
         else:
             return {"status": "failure"}, 400
         return {'categories': data}, 200
@@ -279,39 +284,45 @@ class InterestManagement(Resource):
 # Any user from the friend circle can vote against the accuracy of the occasion date and provide a new value.
 # When this happens the new value will be entered with a status of 0. The admin is expeccted to make the call based on the feedback received
 
-class OccasionManagement:
+class OccasionManagement(Resource):
 
-    @jwt_required()
+    #@jwt_required()
     def post(self):
 
         content = request.get_json()
         if content is None:
             current_app.logger.error("No parameters send into the occasion api (post). Check")
             return {"status": "failure"}, 500
-        user_id = content["user_id"] if "user_id" in content else None
+        creator_user_id = content["creator_user_id"] if "creator_user_id" in content else None
         friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
         occasion_id = content["occasion_id"] if "occasion_id" in content else None
         status = content["status"] if "status" in content else None
         contributor_user_id = content["contributor_user_id"] if "contributor_user_id" in content else None
-        occasion_type = content["occasion_type"] if "occasion_type" in content else None
         occasion_date = content["occasion_date"] if "occasion_date" in content else None
+        flag = content["flag"] if "flag" in content else None
+        value = content["value"] if "value" in content else None
         request_id = content["request_id"] if "request_id" in content else None
 
         objGDBUser = GDBUser()
 
         # add
+        output_hash={}
+        status = 0
         if request_id == 1:  # add occasion
-            if objGDBUser.add_occasion(contributor_user_id, friend_circle_id, occasion_id, occasion_date):
+            print ("Inside occasion request 1")
+            if objGDBUser.add_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, occasion_date,status, output_hash):
                 return {"status": "Success"}, 200
             else:
+                print ("Failure in adding occasion")
                 return {"Status:": "Failure"}, 500
         if request_id == 2:  # vote for occasion
-            if objGDBUser.vote_occasion(occasion_id, user_id, friend_circle_id, status, occasion_date):
+            if objGDBUser.vote_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, flag, value, output_hash):
                 return {"status" : "Success"}, 200
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500
         if request_id == 3:
-            if objGDBUser.approve_occasion(friend_circle_id, user_id, contributor_user_id, occasion_id, status):
+            status = 1
+            if objGDBUser.approve_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, status, output_hash):
                 return {"status" : "Success"}, 200
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500
@@ -337,13 +348,12 @@ class OccasionManagement:
             else:
                 return {"Failure": "Error in updating the occasion"}, 500
 
-    @jwt_required()
+   #@jwt_required()
     def get(self):
         content = request.get_json()
         if content is None:
             current_app.logger.error("No parameters send into the occasion api (get). Check")
             return {"status": "failure"}, 500
-        user_id = content["user_id"]
         friend_circle_id = content["friend_circle_id"]
         request_id = content["request_id"]
 
@@ -351,12 +361,14 @@ class OccasionManagement:
         loutput1 = []
         loutput2 = []
         if request_id == 1:  # request_id = 1 means get the occasion by friend circle id
-            if not friend_circle_id:
-                return {"Error:", "Unexpected value for circle id"}, 500
-            if objGDBUser.get_occasion(friend_circle_id, loutput1) and objGDBUser.get_occasion_votes(friend_circle_id,
-                                                                                                     loutput2):
+            #if objGDBUser.get_occasion(friend_circle_id, loutput1) and objGDBUser.get_occasion_votes(friend_circle_id,loutput):
+            if not objGDBUser.get_occasion_votes(friend_circle_id,loutput2):
+                return{"status":"Failure"}, 400
+            if objGDBUser.get_occasion(friend_circle_id, loutput1):
                 loutput1.append(loutput2)
-                data = json.dumps(str(loutput1))
+                data = json.dumps(loutput1)
+                #final_json = data.replace("\\", "")
+                print ("Final json is", data)
                 return {"occasions", data}, 200
             else:
                 return {"status:": "Error in getting the occasions. try again"}, 500

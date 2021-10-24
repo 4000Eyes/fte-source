@@ -18,7 +18,7 @@ class CategoryManagementDB(Resource):
     def get_id(self):
         self.__uid = str(uuid.uuid4())
         return  self.__uid
-    def add_merch_category(self, merch_category_name, description, output):
+    def add_merch_category(self, merch_category_name, description, age_lo, age_hi, gender, output):
         try:
             driver = NeoDB.get_session()
             query = "MERGE (a:MerchCat{merch_category_name : $merch_category_name_}) " \
@@ -27,13 +27,20 @@ class CategoryManagementDB(Resource):
                     "ON CREATE set a.merch_category_id = $merch_id_, " \
                     "a.merch_category_name = $merch_category_name_, " \
                     "a.created_dt = $created_dt_, " \
-                    "a.descrption = $description_ " \
+                    "a.descrption = $description_ ," \
+                    "a.age_hi = $age_hi_," \
+                    "a.age_lo = $age_lo_," \
+                    "a.gender = $gender_ " \
                     "RETURN a.merch_category_id, a.created_dt, a.updated_dt"
             result = driver.run(query, merch_id_= self.get_id(),
                                 merch_category_name_=merch_category_name,
                                 description_ = description,
                                 created_dt_ = self.get_datetime(),
-                                updated_dt_ = self.get_datetime())
+                                updated_dt_ = self.get_datetime(),
+                                age_hi_ = age_hi,
+                                age_lo_ = age_lo,
+                                gender_ = gender
+                                )
 
             record = result.single()
             if record is None:
@@ -76,7 +83,7 @@ class CategoryManagementDB(Resource):
             return False
 
 
-    def add_web_category(self, web_category_name, description, output):
+    def add_web_category(self, web_category_name, description, age_lo, age_hi, gender, output):
         try:
             driver = NeoDB.get_session()
             print ("inside web category function")
@@ -86,13 +93,19 @@ class CategoryManagementDB(Resource):
                     "ON CREATE set a.web_category_id = $web_id_, " \
                     "a.web_category_name = $web_category_name_, " \
                     "a.created_dt = $created_dt_ ," \
-                    "a.description=$description_ " \
+                    "a.description=$description_ ," \
+                    "a.age_hi  = $age_hi_," \
+                    "a.age_lo = $age_lo_," \
+                    "a.gender = $gender_ " \
                     "RETURN a.web_category_id"
             result = driver.run(query, web_id_= self.get_id(),
                                 web_category_name_=web_category_name,
                                 description_ = description,
                                 updated_dt_ = self.get_datetime(),
-                                created_dt_ = self.get_datetime())
+                                created_dt_ = self.get_datetime(),
+                                age_hi_ = age_hi,
+                                age_lo_ = age_lo,
+                                gender_ = gender )
 
             record = result.single()
             if record["a.web_category_id"]:
@@ -105,7 +118,7 @@ class CategoryManagementDB(Resource):
             print ("The error is", e.message)
             return False
 
-    def add_web_subcategory(self, web_subcategory_name, description, output):
+    def add_web_subcategory(self, web_subcategory_name, description, age_lo, age_hi, gender, output):
         try:
             driver = NeoDB.get_session()
             query = "MERGE (a:WebSubCat{web_subcategory_name:$web_subcategory_name_}) " \
@@ -114,13 +127,19 @@ class CategoryManagementDB(Resource):
                     "ON CREATE set a.web_subcategory_id = $web_id_, " \
                     "a.web_subcategory_name = $web_subcategory_name_, " \
                     "a.created_dt = $created_dt_ ," \
-                    "a.description=$description_ " \
+                    "a.description=$description_ ," \
+                    "a.age_hi = $age_hi_," \
+                    "a.age_lo = $age_lo_," \
+                    "a.gender = $gender_ " \
                     "RETURN a.web_subcategory_id"
             result = driver.run(query, web_id_= self.get_id(),
                                 web_subcategory_name_=web_subcategory_name,
                                 description_ = description,
                                 updated_dt_ = self.get_datetime(),
-                                created_dt_ = self.get_datetime())
+                                created_dt_ = self.get_datetime(),
+                                age_lo_ = age_lo,
+                                age_hi_ = age_hi,
+                                gender_ = gender)
 
             record = result.single()
             if record["a.web_subcategory_id"]:
@@ -159,7 +178,7 @@ class CategoryManagementDB(Resource):
             return False
 
 
-    def add_brand(self, brand_name, description, output):
+    def add_brand(self, brand_name, description, age_lo, age_hi, gender, output):
         try:
             web_id = uuid.uuid4()
             driver = NeoDB.get_session()
@@ -168,13 +187,19 @@ class CategoryManagementDB(Resource):
                     "ON CREATE set a.brand_id = $web_id_, " \
                     "a.brand_name = $brand_name_," \
                     " a.created_dt = $created_dt_," \
-                    " a.description = $description_ " \
+                    " a.description = $description_ , " \
+                    "a.age_hi = $age_hi_," \
+                    "a.age_lo = $age_lo_," \
+                    "a.gender = $gender_ " \
                     " RETURN a.brand_id"
             result = driver.run(query, web_id_= self.get_id(),
                                 brand_name_=brand_name,
                                 description_=description,
                                 created_dt_ = self.get_datetime(),
-                                updated_dt_ = self.get_datetime())
+                                updated_dt_ = self.get_datetime(),
+                                age_lo_= age_lo,
+                                age_hi_ = age_hi,
+                                gender_ = gender)
 
             record = result.single()
             if record["a.brand_id"]:
@@ -219,12 +244,16 @@ class CategoryManagementDB(Resource):
             current_app.logger.error("Error in linking brand to subcategory" + e)
             return False
 
-    def get_web_category(self, output):
+    def get_web_category(self, age_lo, age_hi, gender, output):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:WebCat) " \
+                    " WHERE " \
+                    " toInteger(a.age_lo) >= $age_lo_ " \
+                    " AND toInteger(a.age_hi) <= $age_hi " \
+                    " AND a.gender = $gender_  " \
                     " RETURN a.web_category_id, a.web_category_name"
-            result = driver.run(query)
+            result = driver.run(query, age_lo_ = age_lo, age_hi_ = age_hi, gender_ = gender)
             if result in None:
                 return False
             for record in result:
@@ -234,13 +263,19 @@ class CategoryManagementDB(Resource):
             print ("The error message is ", e.message)
             return False
 
-    def get_web_subcategory(self, web_category_id, output):
+    def get_web_subcategory(self, web_category_id, age_lo, age_hi, gender, output):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:WebSubCat)-[:SUBCATEGORY_OF]->(b:WebCat)" \
                     " WHERE b.web_category_id = $web_category_id_ " \
+                    " AND toInteger(a.age_lo) >= $age_lo_ " \
+                    " AND toInteger(a.age_hi) <= $age_hi_ " \
+                    " AND a.gender = $gender_ " \
+                    " AND toInteger(b.age_lo) >= $age_lo_ " \
+                    " AND toInteger(b.age_hi) <= $age_hi_ " \
+                    " AND b.gender = $gender_ " \
                     " RETURN a.web_subcategory_id, a.web_subcategory_name"
-            result = driver.run(query, web_category_id_ = web_category_id)
+            result = driver.run(query, web_category_id_ = web_category_id, age_lo_ = age_lo, age_hi_ = age_hi, gender_ = gender)
             if result in None:
                 return False
             for record in result:
@@ -250,13 +285,18 @@ class CategoryManagementDB(Resource):
             print ("The error message is ", e.message)
             return False
 
-    def get_brands(self, output):
+    def get_brands(self, age_lo, age_hi, gender, output):
         try:
+            print ("Into the brand function")
             driver = NeoDB.get_session()
             query = "MATCH (a:brand) " \
+                    " WHERE " \
+                    " toInteger(a.age_lo) >= $age_lo_ " \
+                    " AND toInteger(a.age_hi) <= $age_hi_  " \
+                    " AND a.gender = $gender_" \
                     " RETURN a.brand_id, a.brand_name"
-            result = driver.run(query)
-            if result in None:
+            result = driver.run(query, age_hi_ = age_hi, age_lo_ = age_lo, gender_ = gender)
+            if result is None:
                 return False
             for record in result:
                 output[record["a.brand_id"]] = record["a.brand_name"]
@@ -265,13 +305,16 @@ class CategoryManagementDB(Resource):
             print ("The error message is ", e.message)
             return False
 
-    def get_web_subcategory_brands(self, lweb_subcategory_id, output):
+    def get_web_subcategory_brands(self, lweb_subcategory_id, age_lo, age_hi, gender, output):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:WebSubCat)-[:SUBCATEGORY_OF]->(b:brand)" \
-                    " WHERE a.web_subcategory_id in $lweb_subcategory_id_ " \
+                    " WHERE a.web_subcategory_id in $lweb_subcategory_id_  " \
+                    " AND  toInteger(a.age_lo) >= $age_lo_ " \
+                    " AND toInteger(a.age_hi) <= $age_hi_ " \
+                    " AND  a.gender = $gender_" \
                     " RETURN distinct b.brand_id, b.brand_name"
-            result = driver.run(query, lweb_subcategory_id_ = lweb_subcategory_id)
+            result = driver.run(query, lweb_subcategory_id_ = lweb_subcategory_id, age_lo_= age_lo, age_hi_ = age_hi, gender_ = gender)
             if result in None:
                 return False
             for record in result:
