@@ -46,11 +46,13 @@ class UserProductManagement(Resource):
                     current_app.logger.error("Unable to get the subcategories for secret friend")
                     return {"status": "failure. Unable to get subcategories for secret friend"}, 400
 
-            if objSearch.search_by_occasion(content, output_list):
-                print("The result is ", output_list)
-                return {"data": json.loads(json_util.dumps(output_list))}, 200
-            else:
-                return {"status": "failure"}, 500
+                if objSearch.search_by_occasion(content, output_list):
+                    print("The result is ", output_list)
+                    return {"data": json.loads(json_util.dumps(output_list))}, 200
+                else:
+                    current_app.logger.error("Error executing the search by occasion function for friend circle id", content["friend_circle_id"])
+                    print("Error executing the search by occasion function for friend circle id", content["friend_circle_id"])
+                    return {"status": "Error executing the search by occasion function for friend circle id"+ content["friend_circle_id"]}, 400
 
             if content["request_id"] == 2:
                 # get occasions for a secret friend and by given price point
@@ -72,7 +74,6 @@ class UserProductManagement(Resource):
                 return {"data": json.loads(json_util.dumps(output_list))}, 200
             if content["request_id"] == 5:
                 # get all the voted products
-
                 if content["friend_circle_id"] is  None or \
                     content["product_id"] is None or \
                     content["occasion_name"] is None or \
@@ -84,7 +85,6 @@ class UserProductManagement(Resource):
                     current_app.logger.error("Unable to get voted products")
                     print("Friend Circle ID , Unable to get votes products")
                     return {"status": "Unable to get voted products"}, 400
-
                 return {"data": json.loads(json_util.dumps(output_list))}, 200
             if content["request_id"] == 6:
                 # get products by color
@@ -98,7 +98,6 @@ class UserProductManagement(Resource):
                     current_app.logger.error("Unable to product detail for ", inputs["product_id"])
                     print("Unable to product detail for ", inputs["product_id"])
                     return {"status", "Unable to product detail for ", inputs["product_id"]}, 400
-
                 return {"data": json.loads(json_util.dumps(output_list))}, 200
             if content["request_id"] == 8:
                 #vote product
