@@ -330,7 +330,7 @@ class FriendListDB:
                                         ", (m:friend_list{user_id:$user_id_, friend_id:$friend_id_})" \
                                         " MERGE (n)-[:CIRCLE_CREATOR]->(x)-[:SECRET_FRIEND]->(m)" \
                                         " RETURN x.friend_circle_id as circle_id"
-
+                        result = None
                         result = txn.run(insert_circle, user_id_=str(user_id), friend_id_=str(friend_id), friend_circle_id_=str(fid),
                                         friend_circle_name_=friend_circle_name, created_dt_ = self.get_datetime())
                         if result is None:

@@ -97,6 +97,7 @@ def register_extensions(app):
 
 def run():
     app= create_app(os.getenv('BOILERPLATE_ENV') or 'dev')
+    print("The environment variable is", os.getenv('BOILERPLATE_ENV'), os.getenv(('SECRET_KEY')))
     app.run(use_reloader=False)
     print ('After done running89')
 
