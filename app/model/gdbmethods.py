@@ -172,7 +172,7 @@ class GDBUser(Resource):
                     return True
                 elif loutput[0]["linked_user_id"] is None:
                     user_id = loutput[0]["user_id"]
-            else:
+            elif len(loutput) > 1:
                 temp_linked_user_id = None
                 counter = 0
                 for record in loutput:
@@ -214,33 +214,34 @@ class GDBUser(Resource):
                 output_hash["email_address"] = record["u.email_address"]
                 output_hash["user_id"] = record["u.user_id"]
 
-
-            if self.update_friendlist(loutput,user_id, txn):
+            if not self.update_friendlist(loutput,user_id, txn):
                 txn.rollback()
                 current_app.logger.error("We have an issue processing the registration request. Unable to friend list")
                 print("We have an issue processing the registration request. Unable to friend list")
                 return False
             mongo_user_collection = pymongo.collection.Collection(g.db, "user")
-            mongo_user_collection.insert_one({"user_id": output_hash.get("user_id"),
-                                              "email": user_hash.get("email_address"),
-                                              "password": user_hash.get("password"),
-                                              "phone_number": user_hash.get("phone_number"),
-                                              "gender" : user_hash.get("gender"),
-                                              "first_name" : user_hash.get("first_name"),
-                                              "last_name" : user_hash.get("last_name"),
-                                              "user_type" : user_hash.get("user_type")
-                                              })
-            # Check if the user is in the friend list. Go search by email id and phone number if exists.
-            # if referrer exists use that to check
+            result = mongo_user_collection.find_one({"user_id": output_hash.get("user_id")})
+            if result is None:
+                mongo_user_collection.insert_one({"user_id": output_hash.get("user_id"),
+                                                  "email": user_hash.get("email_address"),
+                                                  "password": user_hash.get("password"),
+                                                  "phone_number": user_hash.get("phone_number"),
+                                                  "gender" : user_hash.get("gender"),
+                                                  "first_name" : user_hash.get("first_name"),
+                                                  "last_name" : user_hash.get("last_name"),
+                                                  "user_type" : user_hash.get("user_type")
+                                                  })
+                # Check if the user is in the friend list. Go search by email id and phone number if exists.
+                # if referrer exists use that to check
 
 
-            output_hash["mongo_indexed"] = "Y"
+                output_hash["mongo_indexed"] = "Y"
 
-            if not self.update_user(output_hash, txn):
-                txn.rollback()
-                print("Error in updating the user")
-                return {"status": "Failure in updating the inserted record in the same transaction"}, 400
-                return False
+                if not self.update_user(output_hash, txn):
+                    txn.rollback()
+                    print("Error in updating the user")
+                    return {"status": "Failure in updating the inserted record in the same transaction"}, 400
+                    return False
 
             friend_circles = []
             for record in loutput:
@@ -302,25 +303,23 @@ class GDBUser(Resource):
         try:
             loutput = None
             fe_query = "MATCH (a:friend_list) " \
-                    " WHERE a.friend_id = $friend_id_ and email_address = $email_address_ " \
-                    " return a.user_id, a.friend_id, a.linked_user_id, linked_status_id "
+                    " WHERE email_address = $email_address_ " \
+                    " return a.user_id, a.friend_id, a.linked_user_id, a.linked_status_id "
 
             fep_query = "MATCH (a:friend_list) " \
                     " WHERE a.email_address = $email_address_ and a.phone_number = $phone_number_" \
-                    " and friend_id = $friend_id " \
-                    " return a.user_id, a.friend_id, a.linked_user_id, linked_status_id"
+                    " return a.user_id, a.friend_id, a.linked_user_id, a.linked_status_id"
 
             fp_query =  "MATCH (a:friend_list) " \
-                    " WHERE a.phone_number = $phone_number_ and a.friend_id = $friend_id_ " \
-                    " return a.user_id, a.friend_id, a.linked_user_id, linked_status_id"
+                    " WHERE a.phone_number = $phone_number_ " \
+                    " return a.user_id, a.friend_id, a.linked_user_id, a.linked_status_id"
 
-            if input_hash["email_address"] is not None and input_hash["friend_id"] is not None and input_hash["phone_number"] is not None:
-                result = txn.query(fep_query, friend_id_ = input_hash["friend_id"], email_address_ = input_hash["email_address"], phone_number_ = input_hash["phone_number"])
-            elif input_hash["friend_id"] is not None and input_hash["email_address"] is not None:
-                result = txn.query(fe_query, friend_id_ = input_hash["friend_id"], email_address_ = input_hash["email_address"])
-            elif input_hash["friend_id"] is not None and input_hash["phone_number"] is not None:
-                result = txn.query(fp_query, friend_id_=input_hash["friend_id"],
-                                   phone_number_=input_hash["phone_number"])
+            if input_hash["email_address"] is not None  and input_hash["phone_number"] is not None:
+                result = txn.run(fep_query,  email_address_ = input_hash["email_address"], phone_number_ = input_hash["phone_number"])
+            elif  input_hash["email_address"] is not None:
+                result = txn.run(fe_query, email_address_ = input_hash["email_address"])
+            elif input_hash["phone_number"] is not None:
+                result = txn.run(fp_query, phone_number_ =input_hash["phone_number"])
 
             for record in result:
                 loutput.append(record.data())
