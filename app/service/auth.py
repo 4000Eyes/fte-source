@@ -54,8 +54,7 @@ class SignupApi(Resource):
                 current_app.logger.error("There is an issue in inserting the user")
                 return {'status': ' User already exists'}, 400
 
-
-            return {'id': str(data.get("user_id"))}, 200
+            return {'data': json.dumps(data)}, 200
                 # Check if there is an approved invitation request for this user. If so, automatically add them to the circle
                 # and take them to the circle home page.
         except Exception as e:
