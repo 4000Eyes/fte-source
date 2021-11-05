@@ -2,7 +2,6 @@ alembic==1.6.5
 aniso8601==9.0.1
 attrs==21.2.0
 bcrypt==3.2.0
-bson==0.5.10
 certifi==2021.5.30
 cffi==1.14.5
 click==7.1.2
@@ -47,3 +46,4 @@ SQLAlchemy==1.4.20
 urllib3==1.26.6
 Werkzeug==1.0.1
 WTForms==2.3.3
+gunicorn==20.1.0
