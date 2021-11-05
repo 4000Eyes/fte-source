@@ -1,5 +1,5 @@
 import neo4j
-from neo4j import __version__ as neo4j_version
+from neo4j import __version__ as neo4j_version, TRUST_ALL_CERTIFICATES
 # print (neo4j_version)
 
 from neo4j import GraphDatabase

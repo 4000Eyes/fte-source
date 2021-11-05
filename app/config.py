@@ -5,6 +5,12 @@ import os
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+"""
+    FTEYES_GDB_URI = "bolt://localhost:11006"
+    FTEYES_GDB_USER = "krisraman"
+    FTEYES_GDB_PWD = "Gundan123@"
+    FTEYES_GDB_DB = "fourthousandeyes"
+"""
 
 class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'my_precious_secret_key')
@@ -23,10 +29,10 @@ class DevelopmentConfig(Config):
     FTEYES_PORT = 27017
     FTEYES_USERNAME = "fteyesuser"
     FTEYES_PASSWORD = "Gundan123@"
-    FTEYES_GDB_URI = "bolt://localhost:11006"
-    FTEYES_GDB_USER = "krisraman"
-    FTEYES_GDB_PWD = "Gundan123@"
-    FTEYES_GDB_DB = "fourthousandeyes"
+    FTEYES_GDB_URI = "neo4j+s://49e971e9.databases.neo4j.io:7687"
+    FTEYES_GDB_USER = "neo4j"
+    FTEYES_GDB_PWD = "6_KsMC3oOcwLX0eJQChesvQ1FJnoLinaapmEpwiu22A"
+    FTEYES_GDB_DB = "neo4j"
     # Logging Setup
     LOG_TYPE = "watched"  # Default is a Stream handler
     LOG_LEVEL = "INFO"
