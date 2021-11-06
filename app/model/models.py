@@ -1,9 +1,11 @@
-from app import dbx, g
+from app.app import g
 import pymongo.collection
 from flask_bcrypt import generate_password_hash, check_password_hash
 
+"""
 
 class User(dbx.Document):
+
     user_id = dbx.StringField(required=True, max_length=64)
     email = dbx.EmailField(required=True, unique=True)
     password = dbx.StringField(required=True, min_length=6)
@@ -60,7 +62,7 @@ class ProductDetail(dbx.Document):
     currency = dbx.StringField(max_length=10)
     site_id = dbx.StringField(max_length=128)
     country_id = dbx.IntField()
-
+"""
 class UserHelperFunctions():
     def hash_password(self, pwd):
         return generate_password_hash(pwd).decode('utf8')

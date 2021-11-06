@@ -1,9 +1,9 @@
 from flask import request, current_app, jsonify
-from model.gdbmethods import GDBUser
-from model.friendlistdb import FriendListDB
+from app.model.gdbmethods import GDBUser
+from app.model.friendlistdb import FriendListDB
 from flask_restful import Resource
-from model.models import EmailUserQueue, FriendCircleApprovalQueue
-from model.classhelper import FriendCircleHelper
+#from app.model.models import EmailUserQueue, FriendCircleApprovalQueue
+from app.model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
 import json
 

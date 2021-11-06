@@ -1,10 +1,8 @@
-import pymongo.collection
 from flask import Response, request, current_app, g
 from flask_jwt_extended import create_access_token, decode_token
-from model.models import User, UserHelperFunctions
-from model.gdbmethods import GDBUser
+from app.model.models import UserHelperFunctions
+from app.model.gdbmethods import GDBUser
 from flask_restful import Resource
-from .fte_exceptions import SchemaValidationError, EmailDoesNotExistError, UserInsertionError
 import datetime
 import json
 
@@ -62,6 +60,7 @@ class SignupApi(Resource):
                 print ("The erros is", e)
                 current_app.logger.error(e)
                 return {'status': 'Failure in inserting the user'}, 500
+"""
 
 class LoginApi(Resource):
     def post(self):
@@ -95,7 +94,7 @@ class ForgotPassword(Resource):
                 return {"status":"failure"}, 500
             email = body.get('email')
             if not email:
-                raise SchemaValidationError
+                return None
             objUser = User()
             objUser = User.objects.get(email=email)
             if not objUser:
@@ -107,8 +106,8 @@ class ForgotPassword(Resource):
         except Exception as e:
             current_app.logger.error("Error executing this function " + e)
             return {'Error': 'Unable to execute the forgot password function'}, 400
-
-
+"""
+"""
 class ResetPassword(Resource):
     def post(self):
         url = request.host_url + 'reset/'
@@ -120,7 +119,7 @@ class ResetPassword(Resource):
                 return {"status":"failure"}, 500
             reset_token = body.get('reset_token')
             password = body.get('password')
-
+        
             if not reset_token or not password:
                 current_app.logger.error("The expected values password and oor reset token is missing")
                 return {'Error' : 'The expected values password or reset token are missing'}
@@ -132,4 +131,5 @@ class ResetPassword(Resource):
             return {"status" : "successfully reset"},  200
         except Exception as e:
             current_app.logger.error("Error executing this function " + e)
-            return {'Error': 'Unable to execute the reset password function'}, 400
+            return {'Error': 'Unable to execute the reset password function'},400
+"""

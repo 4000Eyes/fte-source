@@ -2,7 +2,7 @@
 # decision should be made later if we have to seperate the helpfer function by API
 from flask import current_app
 from .gdbmethods import GDBUser
-from .models import EmailUserQueue
+#from .models import EmailUserQueue
 from .friendlistdb import FriendListDB
 from .extensions import NeoDB
 class FriendCircleHelper:

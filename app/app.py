@@ -1,9 +1,11 @@
 import logging
 import os
 import sys
+
 sys.path.insert(0,'/app')
 sys.path.insert(0,'/app/service')
 sys.path.insert(0,'/app/model')
+
 from datetime import datetime as dt
 from werkzeug.local import LocalProxy
 from flask_bcrypt import Bcrypt
@@ -12,10 +14,9 @@ from flask_restful import Api
 from flask_mongoengine import MongoEngine
 from flask_pymongo import PyMongo
 from flask import Flask, request, g, current_app
-from config import config_by_name
-from service.extensions import logs
-
-from model.extensions import NeoDB, RedisCache
+from app.service.extensions import logs
+from app.config import config_by_name
+from app.model.extensions import NeoDB, RedisCache
 
 
 flask_bcrypt = Bcrypt()
@@ -29,6 +30,7 @@ def create_app(config_name: str):
     app = Flask(__name__.split(".")[0])
     app.config.from_object(config_by_name[config_name])
     print ("The env is", config_by_name[config_name])
+    print ("The environment that google says", os.environ.get("BOILERPLATE_ENV"))
 
     dbconnectionstring = app.config['FTEYES_HOST'] + ":" + str(app.config['FTEYES_PORT']) + "/" + app.config['FTEYES_DB']
     app.config['MONGODB_SETTINGS'] = {
@@ -37,7 +39,6 @@ def create_app(config_name: str):
         'password': app.config['FTEYES_PASSWORD']
     }
     app.config['MONGO_URI'] = "mongodb+srv://krisraman:1RyrVRJQCBMIdG77@gemiftcluster.qwn4p.mongodb.net/sample_airbnb"
-    print ("The envvironment is ", os.getenv('PYTHONPATH'))
     jwt.init_app(app)
     flask_bcrypt.init_app(app)
     dbx.init_app(app)
@@ -47,8 +48,8 @@ def create_app(config_name: str):
     #loud_mongodb.db.test_collection.insert_one({"From Flask": "Working through Flask23"})
 
     with app.app_context():
-        from controller.routes import initialize_routes
-        from service.auth import LoginApi, SignupApi
+        from app.controller.routes import initialize_routes
+        #from service.auth import LoginApi, SignupApi
         #api.add_resource(SignupApi, '/api/auth/signup')
         #api.add_resource(LoginApi, '/api/login')
         initialize_routes(api)
@@ -96,10 +97,9 @@ def register_extensions(app):
 
 
 def run():
-    app= create_app(os.getenv('BOILERPLATE_ENV') or 'dev')
-    print("The environment variable is", os.getenv('BOILERPLATE_ENV'), os.getenv(('SECRET_KEY')))
-    app.run(use_reloader=False,host="0.0.0.0",debug=True)
-    print ('After done running89')
+    app= create_app(os.environ.get('BOILERPLATE_ENV') or 'dev')
+    print("The environment variable is",  os.environ.get('BOILERPLATE_ENV'))
+    app.run(use_reloader=False,host="0.0.0.0",port=8081, debug=True)
 
 if __name__ == '__main__':
     run()

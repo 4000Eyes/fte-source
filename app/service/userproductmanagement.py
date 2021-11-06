@@ -1,6 +1,6 @@
 from flask import Response, request, current_app, jsonify
-from model.searchdb import SearchDB
-from model.gdbmethods import GDBUser
+from app.model.searchdb import SearchDB
+from app.model.gdbmethods import GDBUser
 from flask_restful import Resource
 from bson import json_util, ObjectId
 import datetime
@@ -10,8 +10,21 @@ import json
 class UserProductManagement(Resource):
     def get(self):
         try:
-            content = request.get_json()
-            print("Inside the search request")
+            #print ("The json is", request.get_json(force=True))
+            #content = request.get_json(force=True)
+            content={}
+            content["request_id"] = request.args.get("request_id",type=int)
+            content["product_id"] = request.args.getlist("product_id")
+            content["age_floor"] = request.args.get("age_floor",type=int)
+            content["age_ceiling"] = request.args.get("age_ceiling", type=int)
+            content["sort_order"] = request.args.get("sort_order",type=str)
+            content["subcategory_list"] = request.args.getlist("subcategory_list")
+            content["category_list"] = request.args.getlist("category_list")
+            content["color_list"] = request.args.getlist("color_list")
+            content["occasion_names"] = request.args.getlist("occasion_names")
+
+
+            print ("The values are", content["request_id"], content["product_id"])
             if content is None:
                 return {"status": "Failure"}, 400
             if "request_id" not in content:
