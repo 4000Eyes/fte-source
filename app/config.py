@@ -34,7 +34,6 @@ class DevelopmentConfig(Config):
     FTEYES_GDB_PWD = "6_KsMC3oOcwLX0eJQChesvQ1FJnoLinaapmEpwiu22A"
     FTEYES_GDB_DB = "neo4j"
     # Logging Setup
-    LOG_TYPE = "watched"  # Default is a Stream handler
     LOG_LEVEL = "INFO"
     REDIS_HOST="127.0.0.1"
     REDIS_PORT=6379
@@ -42,7 +41,8 @@ class DevelopmentConfig(Config):
     REDIS_DBNAME=0
 
     # File Logging Setup
-    LOG_DIR = "/home/krissrinivasan/python/logs"
+    LOG_TYPE="stream"
+    LOG_DIR = "/logs"
     APP_LOG_NAME = "app.log"
     WWW_LOG_NAME = "www.log"
     LOG_MAX_BYTES = 100_000_000  # 100MB in bytes
@@ -66,7 +66,7 @@ class TestingConfig(Config):
     FTEYES_GDB_PWD = "Gundan123@"
     FTEYES_GDB_DB = "fourthousandeyes"
     # Logging Setup
-    LOG_TYPE = "watched"  # Default is a Stream handler
+    LOG_TYPE = "stream"  # Default is a Stream handler
     LOG_LEVEL = "INFO"
     REDIS_HOST="127.0.0.1"
     REDIS_PORT=6379
@@ -95,7 +95,6 @@ class ProductionConfig(Config):
     FTEYES_GDB_PWD = "Gundan123@"
     FTEYES_GDB_DB = "fourthousandeyes"
     # Logging Setup
-    LOG_TYPE = "watched"  # Default is a Stream handler
     LOG_LEVEL = "INFO"
     REDIS_HOST="127.0.0.1"
     REDIS_PORT=6379
@@ -103,6 +102,7 @@ class ProductionConfig(Config):
     REDIS_DBNAME=0
     # File Logging Setup
     LOG_DIR = "/home/krissrinivasan/python/logs"
+    LOG_TYPE="stream"
     APP_LOG_NAME = "app.log"
     WWW_LOG_NAME = "www.log"
     LOG_MAX_BYTES = 100_000_000  # 100MB in bytes

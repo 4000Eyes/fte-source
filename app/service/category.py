@@ -1,5 +1,5 @@
 from flask import request, current_app
-from model.categorydb import CategoryManagementDB
+from app.model.categorydb import CategoryManagementDB
 from flask_restful import Resource
 import json
 

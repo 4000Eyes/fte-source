@@ -1,3 +1,3 @@
-from .flask_logs import LogSetup
+from app.service.flask_logs import LogSetup
 
 logs = LogSetup()
