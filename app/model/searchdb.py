@@ -1,5 +1,3 @@
-import copy
-import bson
 import pymongo
 import neo4j.exceptions
 import pymongo.collection
@@ -11,7 +9,7 @@ from datetime import datetime
 import dateutil
 import uuid
 import json
-from bson.codec_options import CodecOptions
+
 
 
 class SearchDB:

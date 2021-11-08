@@ -1,5 +1,5 @@
-from app.app import g
-import pymongo.collection
+#from app.app import g
+#import pymongo.collection
 from flask_bcrypt import generate_password_hash, check_password_hash
 
 """
