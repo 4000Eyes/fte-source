@@ -82,7 +82,7 @@ def create_app(config_name: str):
         return response
     @app.route('/test', methods=['GET'])
     def home():
-        return "<h1>Test</h1><p>Welccome to service</p>"
+        return "<h1>Test</h1><p>Welccome to service. Hope this keeps working. Thank you</p>"
     return app
 
 def register_extensions(app):
