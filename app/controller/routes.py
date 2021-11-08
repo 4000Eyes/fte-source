@@ -4,7 +4,7 @@ from app.service.auth import SignupApi
 from app.service.friendmanagement import ManageFriendCircle, InterestManagement, OccasionManagement
 from app.service.category import CategoryManagement
 from app.service.userproductmanagement import UserProductManagement, UserSearchManagement
-from app.app import api
+from app.main import api
 
 def initialize_routes(api):
    api.add_resource(SignupApi, '/api/auth/signup')
