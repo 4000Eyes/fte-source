@@ -13,7 +13,7 @@ class UserProductManagement(Resource):
             #print ("The json is", request.get_json(force=True))
             #content = request.get_json(force=True)
             content={}
-
+            #rere
             content["product_id"] = request.args.getlist("product_id")
             content["age_floor"] = request.args.get("age_floor",type=int)
             content["age_ceiling"] = request.args.get("age_ceiling", type=int)

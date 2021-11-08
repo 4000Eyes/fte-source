@@ -7,6 +7,7 @@ from app.model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
 import json
 
+#are
 
 class ManageFriendCircle(Resource):
     FAKE_USER_TYPE = 1

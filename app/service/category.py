@@ -72,7 +72,7 @@ class CategoryManagement(Resource):
 
     def get(self):
         loutput = []
-
+        #changes are not shown
         objCategory = CategoryManagementDB()
         request_id = request.args.get("request_id", type=int)
         category_id = request.args.get("category_id", type=int)
