@@ -18,6 +18,9 @@ class ManageFriendCircle(Resource):
             objGDBUser = GDBUser()
             objFriend = FriendListDB()
             content = request.get_json()
+            request_id = content["request_id"]
+            content["user_list"] = content["user_list"]
+
             if content is None:
                 current_app.logger.error("No parameters send into the friend circle api (post). Check")
                 return {"status":"failure"}, 500
@@ -25,7 +28,7 @@ class ManageFriendCircle(Resource):
                 current_app.logger.error("No request id in the request")
                 return {"status": "Request id is missing"}, 500
 
-            request_id = content["request_id"]
+
 
             if request_id == 5 and content["user_list"] is None:
                 current_app.logger.error("User list is a key parameter for request id 5 and it is missine")
@@ -34,13 +37,13 @@ class ManageFriendCircle(Resource):
             user_list = content["user_list"] if "user_list" in content else None
 
             user_info = {}
-            user_info["admin_friend_id"] = content["admin_friend_id"] if "admin_friend_id" in content else None
-            user_info["referred_user_id"] = content["referred_user_id"] if "referred_user_id" in content else None
-            user_info["referrer_user_id"] =  content["referrer_user_id"] if "referrer_user_id" in content else None
-            user_info["friend_circle_id"] = content["friend_circle_id"] if "friend_circle_id" in content else None
+            user_info["admin_friend_id"] =  content["admin_friend_id"] if "admin_friend_id" in content else None
+            user_info["referred_user_id"] =  content["referred_user_id"] if "referred_user_id" in content else None
+            user_info["referrer_user_id"] =    content["referrer_user_id"] if "referrer_user_id" in content else None
+            user_info["friend_circle_id"] =  content["friend_circle_id"] if "friend_circle_id" in content else None
             user_info["first_name"] = content["first_name"] if "first_name" in content else None
-            user_info["last_name"] = content["last_name"] if "last_name" in content else None
-            user_info["email_address"]  = content["email_address"] if "email_address" in content else None
+            user_info["last_name"] =  content["last_name"] if "last_name" in content else None
+            user_info["email_address"]  =  content["email_address"] if "email_address" in content else None
             user_info["gender"]= content["gender"] if "gender" in content else None
             user_info["location"] = content["location"] if "location" in content else None
             user_info["gender"] = content["email_address"] if "email_address" in content else None
@@ -163,13 +166,10 @@ class ManageFriendCircle(Resource):
     #@jwt_required()
     def get(self):
 
-        content = request.get_json(force=True)
-        if content is None:
-            current_app.logger.error("No parameters send into the friend circle api (get). Check")
-            return {"status": "failure"}, 500
-        user_id = content["user_id"] if "user_id" in content else None
-        friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
-        request_id = content["request_id"] if "request_id" in content else None
+
+        user_id = request.args.get("user_id", type=str)
+        friend_circle_id = request.args.get("friend_circle_id", type=str)
+        request_id = request.args.get("request_id", type=int)
         output = []
         objGDBUser = GDBUser()
 
@@ -247,14 +247,11 @@ class InterestManagement(Resource):
     #jwt_required()
     def get(self):
 
-        content = request.get_json()
-        if content is None:
-            current_app.logger.error("No parameters send into the interest api (get). Check")
-            return {"status": "failure"}, 500
-        user_id = content["user_id"] if "user_id" in content else None
-        friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
+
+        user_id = request.args.get("user_id", type=str)
+        friend_circle_id = request.args.get("friend_circle_id", type=str)
         #interest_category_id = content["interest_category_id"] if "interest_category_id" in content else None
-        request_id = content["request_id"] if "request_id" in content else None
+        request_id = request.args.get("request_id", type=int)
 
         objGDBUser = GDBUser()
         loutput = []
@@ -350,12 +347,9 @@ class OccasionManagement(Resource):
 
    #@jwt_required()
     def get(self):
-        content = request.get_json()
-        if content is None:
-            current_app.logger.error("No parameters send into the occasion api (get). Check")
-            return {"status": "failure"}, 500
-        friend_circle_id = content["friend_circle_id"]
-        request_id = content["request_id"]
+
+        friend_circle_id = request.args.get("friend_circle_id", type=str)
+        request_id = request.args.get("request_id", type=int)
 
         objGDBUser = GDBUser()
         loutput1 = []

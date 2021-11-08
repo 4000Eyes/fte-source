@@ -72,19 +72,16 @@ class CategoryManagement(Resource):
 
     def get(self):
         loutput = []
-        content = request.get_json()
-        if content is None:
-            current_app.logger.error("No arguments passed to the api call /api/category(get). check parameters")
-            return {"status": "failure"}, 500
+
         objCategory = CategoryManagementDB()
-        request_id = content["request_id"] if "request_id" in content else None
-        category_id = content["category_id"] if "category_id" in content else None
-        subcategory_id = content["subcategory_id"] if "subcategory_id" in content else None
-        brand_id = content["brand_id"] if "brand_id" in content else None
-        subcategory_brand_list = content["subcategory_brand_list"] if "subcategory_brand_list" in content else None
-        age_hi = content["age_hi"] if "age_hi" in content else None
-        age_lo = content["age_lo"] if "age_lo" in content else None
-        gender = content["gender"] if "gender" in content else None
+        request_id = request.args.get("request_id", type=int)
+        category_id = request.args.get("category_id", type=int)
+        subcategory_id = request.args.get("subcategory_id", type=str)
+        brand_id = request.args.get("brand_id", type=str)
+        subcategory_brand_list = request.args.getlist("subcategory_brand_list")
+        age_hi = request.args.get("age_hi", type=int)
+        age_lo = request.args.get("age_lo", type=int)
+        gender = request.args.get("gender", type=str)
         if age_lo is None or age_hi is None or gender is None:
             return {"status": " Age and gender cannot be null"}, 400
         output = {}
