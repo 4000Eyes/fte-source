@@ -1,0 +1,6 @@
+runtime: python38
+entrypoint: gunicorn --preload -b :$PORT main:app --timeout 120
+
+env_variables:
+  BOILERPLATE_ENV: "dev"
+  SECRET_KEY: "$5%sd@9*k12"
