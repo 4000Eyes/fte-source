@@ -60,7 +60,6 @@ class SignupApi(Resource):
                 print ("The erros is", e)
                 current_app.logger.error(e)
                 return {'status': 'Failure in inserting the user'}, 500
-"""
 
 class LoginApi(Resource):
     def post(self):
@@ -70,9 +69,8 @@ class LoginApi(Resource):
             if body is None:
                 current_app.logger.error("No parameters send into the login api (post). Check")
                 return {"status":"failure"}, 500
-            objUser = User()
-            objUser = User.objects.get(email=body.get('email'))
-            authorized = objUser.check_password(body.get('password'))
+            objUser = UserHelperFunctions()
+            authorized = objUser.validate_login(body["email"], body["passwword"])
             print ("The password from the db is ", authorized)
             if not authorized:
                 return {'error': 'Email or password invalid'}, 401
@@ -82,7 +80,6 @@ class LoginApi(Resource):
         except Exception as e:
             print ("The error is ", e)
             return {'token': 'n/a'}, 400
-
 
 class ForgotPassword(Resource):
     def post(self):
@@ -95,41 +92,37 @@ class ForgotPassword(Resource):
             email = body.get('email')
             if not email:
                 return None
-            objUser = User()
-            objUser = User.objects.get(email=email)
-            if not objUser:
-                return {'Error': 'Unable to find the user with the email address'}, 400
-            expires = datetime.timedelta(hours=24)
-            reset_token = create_access_token(str(objUser.user_id), expires_delta=expires)
-            return reset_token
-
+            objUser = UserHelperFunctions()
+            output_hash = {}
+            if objUser.get_user_info(body["email"], output_hash):
+                if "user_id" in output_hash:
+                    expires = datetime.timedelta(hours=24)
+                    reset_token = create_access_token(str(output_hash["user_id"]), expires_delta=expires)
+                    return reset_token
+            return {'Error': 'Unable to find the user with the email address'}, 400
         except Exception as e:
             current_app.logger.error("Error executing this function " + e)
             return {'Error': 'Unable to execute the forgot password function'}, 400
-"""
-"""
+
+
 class ResetPassword(Resource):
     def post(self):
         url = request.host_url + 'reset/'
         try:
-            objUser = User()
+            objUser = UserHelperFunctions()
             body = request.get_json()
             if body is None:
                 current_app.logger.error("No parameters send into the reset api (post). Check")
                 return {"status":"failure"}, 500
             reset_token = body.get('reset_token')
             password = body.get('password')
-        
             if not reset_token or not password:
                 current_app.logger.error("The expected values password and oor reset token is missing")
                 return {'Error' : 'The expected values password or reset token are missing'}
             user_id = decode_token(reset_token)['identity']
-            objUser = User.objects.get(id=user_id)
-            objUser.modify(password=password)
-            objUser.hash_password()
-            objUser.save()
-            return {"status" : "successfully reset"},  200
+            if objUser.modify_user_credentials(user_id, password):
+                return {"status" : "successfully reset"},  200
+            return {"status": "Unsuccessful in resetting the password"}, 400
         except Exception as e:
             current_app.logger.error("Error executing this function " + e)
             return {'Error': 'Unable to execute the reset password function'},400
-"""
