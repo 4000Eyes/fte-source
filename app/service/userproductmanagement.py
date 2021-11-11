@@ -1,4 +1,4 @@
-from flask import Response, request, current_app, jsonify
+from flask import Response, request, current_app, jsonify, json
 from app.model.searchdb import SearchDB
 from app.model.gdbmethods import GDBUser
 from flask_restful import Resource
@@ -14,14 +14,19 @@ class UserProductManagement(Resource):
             #content = request.get_json(force=True)
             content={}
             #rere
-            content["product_id"] = request.args.getlist("product_id")
+
+
+            content["request_id"] = request.args.get("request_id",type=int)
+            content["product_id"] = []
+            content["product_id"] = request.args.getlist("product_id", type=int)
+            print ("The values are", content["request_id"], content["product_id"])
             content["age_floor"] = request.args.get("age_floor",type=int)
             content["age_ceiling"] = request.args.get("age_ceiling", type=int)
             content["sort_order"] = request.args.get("sort_order",type=str)
-            content["subcategory_list"] = request.args.getlist("subcategory_list")
-            content["category_list"] = request.args.getlist("category_list")
-            content["color_list"] = request.args.getlist("color_list")
-            content["occasion_names"] = request.args.getlist("occasion_names")
+            content["subcategory"] = request.args.getlist("subcategory_list")
+            content["category"] = request.args.getlist("category_list")
+            content["color"] = request.args.getlist("color_list")
+            content["occasion"] = request.args.getlist("occasion_list")
 
 
             print ("The values are", content["request_id"], content["product_id"])
@@ -35,14 +40,16 @@ class UserProductManagement(Resource):
             objGDBUser = GDBUser()
 
             if content["request_id"] == 1:
+                """
                 if "subcategory_list" in content:
                     content["subcategory"] = "'%s'" % "','".join(content["subcategory_list"])
                 if "color_list" in content:
                     content["color"] = "'%s'" % "','".join(content["color_list"])
                 if "category_list" in content:
                     content["category"] = "'%s'" % "','".join(content["category_list"])
-                if "occasion_names" in content:
+                if "occasion_list" in content:
                     content["occasion"] = "'%s'" % "','".join(content["occasion_list"])
+                """
                 if "age_floor" not in content or \
                         "age_ceiling" not in content or \
                         "sort_order" not in content:
@@ -141,4 +148,12 @@ class UserProductManagement(Resource):
 
 class UserSearchManagement(Resource):
     def get(self):
-        return {"status": "succcess"}, 200
+        content = {}
+        output = []
+        content["text"] = request.args.get("text")
+        objSearch = SearchDB()
+
+        if objSearch.get_users(content["text"], output):
+            print ("The output is", output)
+            return {"data": json.loads(json_util.dumps(output))}, 200
+        return {"status": "Error in Search"}, 400

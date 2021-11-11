@@ -50,5 +50,3 @@ class MongoDBFunctions():
             return False
 
 
-    def insert_user(self, hshuser):
-        return True
