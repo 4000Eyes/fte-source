@@ -47,7 +47,6 @@ class CategoryManagementDB(Resource):
                 return False
 
             output["merch_category_id"] = record["a.merch_category_id"]
-
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -110,7 +109,6 @@ class CategoryManagementDB(Resource):
             record = result.single()
             if record["a.web_category_id"]:
                 output["web_category_id"] = record["a.web_category_id"]
-                return True
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -144,7 +142,6 @@ class CategoryManagementDB(Resource):
             record = result.single()
             if record["a.web_subcategory_id"]:
                 output["web_subcategory_id"] = record["a.web_subcategory_id"]
-                return True
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True

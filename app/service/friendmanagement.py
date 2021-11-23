@@ -2,7 +2,6 @@ from flask import request, current_app, jsonify
 from app.model.gdbmethods import GDBUser
 from app.model.friendlistdb import FriendListDB
 from flask_restful import Resource
-#from app.model.models import EmailUserQueue, FriendCircleApprovalQueue
 from app.model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
 import json
@@ -49,6 +48,7 @@ class ManageFriendCircle(Resource):
             user_info["location"] = content["location"] if "location" in content else None
             user_info["gender"] = content["email_address"] if "email_address" in content else None
             user_info["friend_circle_name"] = content["friend_circle_name"] if "friend_circle_name" in content else None
+            user_info["list_friend_circle_id"] = content["list_friend_circle_id"] if "list_friend_circle_id" in content else None
 
             # clean up the inputs before calling the functions
             output = []
@@ -58,7 +58,8 @@ class ManageFriendCircle(Resource):
             # requests_id : 3 --> creating a friend circle for an existing member as the secret friend - This will require creator_user_id, friend_id, circle name
             # request_id : 4 --> creating a friend circle for a non-existing member as the secret friend - This will require creator_user_id, email_address, name, circle_name
             # request_id : 5 --> a list of friends or contacts from whatsapp to create friend circles.
-
+            # request_id : 6 --> Approve the friend request by the adnin
+            # req
             # Note: Admin should be able to add friends without approval.
 
             output = {}
@@ -151,6 +152,13 @@ class ManageFriendCircle(Resource):
                 if not objFriendCircleHelper.create_circles_from_whatsapp(user_list,user_info["admin_friend_id"]):
                     return {"status": "Failure in creating circles from the whatsapp contact"}, 400
                 return {"status": "success"}, 200
+
+            if request_id == 6:
+
+                if not objFriend.approve_requests(user_info["referrer_user_id"], user_info["referred_user_id"], user_info["list_friend_circle_id"]):
+                    return {"status": "Failure"}, 400
+
+                return {"status": "success"}, 200
             if request_id == 100: # purely for testing purposes
                 output.clear()
                 print ("Inside request 5")
@@ -176,6 +184,7 @@ class ManageFriendCircle(Resource):
 
         # request == 1 :Get friend circle data by friend circle id
         # request == 2: Get all friend circle data for a given user
+        # request == 3 : Get all your friends from the friend list
 
         if request_id == 1:
             # Get specific friend circle data
@@ -191,6 +200,14 @@ class ManageFriendCircle(Resource):
                 return {"Erros": "unable to get friend circle information. retry"}, 500
             data = json.dumps(output)
             return {'friend_circle_id': data}, 200
+
+        if request_id == 3:
+            objFriend = FriendListDB()
+            if not objFriend.get_friend_list(user_id, output):
+                print('There is an issue getting friend_circle_data for ', user_id)
+                return {"Erros": "unable to get friend circle information. retry"}, 500
+            data = json.dumps(output)
+            return {'friend_list: data'}, 200
 
     def delete(self):
         return {"Item successfully deleted": "thank you"}, 200
@@ -297,8 +314,10 @@ class OccasionManagement(Resource):
         status = content["status"] if "status" in content else None
         contributor_user_id = content["contributor_user_id"] if "contributor_user_id" in content else None
         occasion_date = content["occasion_date"] if "occasion_date" in content else None
+        occasion_timezone = content["occasion_timezone"] if "occasion_timezone" in content else None
         flag = content["flag"] if "flag" in content else None
         value = content["value"] if "value" in content else None
+        value_timezone = content["value_timezone"] if "value_timezone" in content else None
         request_id = content["request_id"] if "request_id" in content else None
 
         objGDBUser = GDBUser()
@@ -308,13 +327,13 @@ class OccasionManagement(Resource):
         status = 0
         if request_id == 1:  # add occasion
             print ("Inside occasion request 1")
-            if objGDBUser.add_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, occasion_date,status, output_hash):
+            if objGDBUser.add_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, occasion_date,occasion_timezone, status, output_hash):
                 return {"status": "Success"}, 200
             else:
                 print ("Failure in adding occasion")
                 return {"Status:": "Failure"}, 500
         if request_id == 2:  # vote for occasion
-            if objGDBUser.vote_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, flag, value, output_hash):
+            if objGDBUser.vote_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, flag, value, value_timezone, output_hash):
                 return {"status" : "Success"}, 200
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500

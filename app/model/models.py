@@ -72,13 +72,15 @@ class UserHelperFunctions():
     def check_password(self, pwd, upwd):
         return check_password_hash(pwd, upwd)
 
-    def validate_login(self, email,pwd):
+    def validate_login(self, email,pwd, ack_hash):
         try:
-            mongo_user = pymongo.collection.Collection(g.db, "User")
-            result = mongo_user.find({"email_address": email})
+            mongo_user = pymongo.collection.Collection(g.db, "user")
+            result = mongo_user.find({"email": email})
             if result is not None:
-                return check_password_hash(result["password"], pwd)
-            return False
+                for row in result:
+                    ack_hash["authorized"] = self.check_password(row["password"], pwd)
+                    ack_hash["user_id"] = row["user_id"]
+            return True
         except pymongo.errors as e:
             current_app.logger.error(e)
             print("The error is ", e)
@@ -107,7 +109,7 @@ class UserHelperFunctions():
 
     def modify_user_credentials(self, user_id, password):
         try:
-            mongo_user = pymongo.collection.Collection(g.db, "User")
+            mongo_user = pymongo.collection.Collection(g.db, "user")
             result = mongo_user.find({"user_id": user_id})
             if result is not None:
                 hsh_pwd = self.hash_password(password)

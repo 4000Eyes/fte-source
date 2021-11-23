@@ -3,11 +3,13 @@ from app.model.searchdb import SearchDB
 from app.model.gdbmethods import GDBUser
 from flask_restful import Resource
 from bson import json_util, ObjectId
+from flask_jwt_extended import jwt_required
 import datetime
 import json
 
 
 class UserProductManagement(Resource):
+    @jwt_required()
     def get(self):
         try:
             #print ("The json is", request.get_json(force=True))
@@ -146,7 +148,9 @@ class UserProductManagement(Resource):
             return False
 
 
+
 class UserSearchManagement(Resource):
+    @jwt_required()
     def get(self):
         content = {}
         output = []

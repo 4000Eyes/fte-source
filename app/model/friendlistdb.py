@@ -6,7 +6,7 @@ from flask_restful import Resource
 from .extensions import NeoDB
 from .gdbmethods import GDBUser
 from .mongodbfunc import MongoDBFunctions
-from datetime import datetime
+from datetime import datetime, date
 import pymongo.collection, pymongo.errors
 import uuid
 
@@ -33,6 +33,28 @@ class FriendListDB:
         self.__uid = str(uuid.uuid4())
         return  self.__uid
 
+    def get_friend_list(self, friend_id, loutput):
+
+        try:
+            driver = NeoDB.get_session()
+
+            query = "MATCH (a:friend_list)" \
+                    " WHERE a.email_address = $email_address_" \
+                    " AND a.friend_id = $friend_id_" \
+                    " RETURN a.email_address, a.phone_number, a.name, a.location "
+            result = driver.run (query, friend_id_ = friend_id)
+            for record in result:
+                loutput.append(record.data())
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print ("The error is ", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print ("The error is ", e)
+            return False
+
     def get_friend(self, email_address, phone_number, user_id, loutput):
 
         try:
@@ -51,11 +73,8 @@ class FriendListDB:
 
                 result = driver.run(query, phone_number_ = phone_number, user_id_=user_id)
 
-            if result.peek() is None:
-                return False
-
             for record in result:
-                loutput.append(record)
+                loutput.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
@@ -212,6 +231,8 @@ class FriendListDB:
             print("The  parameters is ", result.consume().parameters)
             objMongo = MongoDBFunctions()
             hshuser["referred_user_id"] = output_hash[key]["user_id"] # NOTE: Altering the inputs. I know it is a bad idea, but cutting corners for now.
+            hshuser["user_type"] = "Existing"
+            hshuser["comm_type"] = "Email"
             if not objMongo.insert_approval_queue(hshuser):
                 txn.rollback()
                 current_app.logger.error("Unable to insert the record into the approval queue for " + hshuser["email_address"])
@@ -280,11 +301,9 @@ class FriendListDB:
             key = hshuser["referrer_user_id"] + hshuser["email_address"]
             hshuser["referred_user_id"] = output_hash[key]["user_id"]
             objMongo = MongoDBFunctions()
-            if not objMongo.insert_email_queue(hshuser):
-                txn.rollback()
-                current_app.logger.error("Error in inserting the record into email user queue for " + hshuser["email_address"])
-                print ("Error in inserting the record into email user queue for " + hshuser["email_address"])
-                return False
+            hshuser["user_type"] = "New"
+            hshuser["comm_type"] = "Email"
+
             if not objMongo.insert_approval_queue(hshuser):
                 txn.rollback()
                 current_app.logger.error("Error in inserting the record into approval  queue for " + hshuser["email_address"])
@@ -379,3 +398,28 @@ class FriendListDB:
             print ("Error in adding contributors", e)
             return False
 
+
+    def approve_requests(self, referrer_user_id, referred_user_id, list_friend_circle_id):
+        # How should this work?
+        # Check if there is a row in the approval queue table. If exists, update the approval_flag to 1. insert a row in the email queue table.
+
+        try:
+            objMongo = MongoDBFunctions()
+            approval_queue_collection = pymongo.collection.Collection(g.db, "approval_queue")
+            result = approval_queue_collection.find_one({"referred_user_id": referred_user_id, "referrer_user_id":referrer_user_id, "friend_circle_id": {"$in": list_friend_circle_id}})
+            if result is not None:
+                for row in result:
+                    if not objMongo.insert_email_queue(row):
+                        current_app.logger.error("Unable to insert a row into the email table for " + result["referrer_user_id"])
+                        return False
+                update_record = approval_queue_collection.update_many({"referred_user_id":referred_user_id, "referrer_user_id": referrer_user_id, "friend_circle_id":{"$in": list_friend_circle_id}},
+                                                                      {"$set": {"approved_flag" : 1, "approved_dt": date.today().strftime("%d/%m/%Y")}}
+                                                                      )
+                if update_record is None:
+                    current_app.logger.error("Error in updating the records for user " + referrer_user_id + "for circles " + list_friend_circle_id)
+                    return False
+
+            return True
+        except pymongo.errors as e:
+            current_app.logger.error("The error is " + e)
+            return False

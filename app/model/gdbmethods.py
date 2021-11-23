@@ -816,7 +816,7 @@ class GDBUser(Resource):
     # friend_occasion_create_dt
     # friend_occasion_update_dt
 
-    def add_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, occasion_date, status, output_hash):
+    def add_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, occasion_date, occasion_timezone, status, output_hash):
         try:
             print ("Inside the add occasion function")
             driver = NeoDB.get_session()
@@ -832,7 +832,7 @@ class GDBUser(Resource):
                 record = result.single()
                 if record["friend_occasion"] <= 0:
                     query = " CREATE (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_, " \
-                            "occasion_date:$occasion_date_, created_dt:$created_dt_, friend_occasion_status:$friend_occasion_status_}) " \
+                            "occasion_date:$occasion_date_, occasion_timezone:$occasion_timezone, created_dt:$created_dt_, friend_occasion_status:$friend_occasion_status_}) " \
                             " WITH f " \
                             " MATCH(a:friend_list{user_id:$user_id_, friend_id:$friend_id_})," \
                             " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
@@ -846,6 +846,7 @@ class GDBUser(Resource):
                                 friend_id_ = friend_id,
                                 occasion_id_=occasion_id,
                                 occasion_date_=occasion_date,
+                                occasion_timezone = occasion_timezone,
                                 friend_occasion_status_ = status,
                                 updated_dt_= self.get_datetime()
                                 )
@@ -932,7 +933,7 @@ class GDBUser(Resource):
             print(e.message)
             return False
 
-    def vote_occasion(self,  user_id, friend_id, friend_circle_id, occasion_id, flag, value, output_hash):
+    def vote_occasion(self,  user_id, friend_id, friend_circle_id, occasion_id, flag, value, value_timezone, output_hash):
         try:
             driver = NeoDB.get_session()
             query = " MATCH (a:friend_list{user_id:$user_id_, friend_id:$friend_id_}), " \
@@ -942,11 +943,12 @@ class GDBUser(Resource):
                     " r.value = $value_" \
                     " ON CREATE set r.status = $status_, r.created_dt=$created_dt_, " \
                     " r.friend_circle_id = $friend_circle_id_," \
-                    " r.value = $value_" \
+                    " r.value = $value_," \
+                    " r.value_timezone = $value_timezone_" \
                     " RETURN b.friend_circle_id as friend_circle_id"
 
             result = driver.run(query, user_id_=user_id, friend_id_ = friend_id, friend_circle_id_=friend_circle_id, occasion_id_=occasion_id,
-                                value_=value, status_ = flag, updated_dt_ = self.get_datetime(), created_dt_=self.get_datetime())
+                                value_=value, value_timezone_ = value_timezone, status_ = flag, updated_dt_ = self.get_datetime(), created_dt_=self.get_datetime())
             if result is not None:
                 for record in result:
                     output_hash["friend_circle_id"] = record["friend_circle_id"]
