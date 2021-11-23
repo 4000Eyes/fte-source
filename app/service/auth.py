@@ -69,14 +69,25 @@ class LoginApi(Resource):
             if body is None:
                 current_app.logger.error("No parameters send into the login api (post). Check")
                 return {"status":"failure"}, 500
+            objGDBUser = GDBUser()
             objUser = UserHelperFunctions()
-            authorized = objUser.validate_login(body["email"], body["passwword"])
-            print ("The password from the db is ", authorized)
-            if not authorized:
-                return {'error': 'Email or password invalid'}, 401
+            ack_hash = {}
+            ack_hash["user_id"] = None
+            ack_hash["authorized"] = False
+            if not objUser.validate_login(body["email"], body["password"], ack_hash):
+                return {'error': 'System issue. Unable to verify the credentials'}, 401
+            if not ack_hash["authorized"]:
+                return {"error": "password didnt match"}, 401
+            print ("The password from the db is ", ack_hash["authorized"])
+            if ack_hash["user_id"] is None:
+                return {"Error": "User id is empty. Some technical issues"}, 401
             expires = datetime.timedelta(days=7)
-            access_token = create_access_token(identity=str(objUser.user_id), expires_delta=expires)
-            return {'token': access_token}, 200
+            access_token = create_access_token(identity=str(ack_hash["user_id"]), expires_delta=expires)
+            loutput = []
+            if objGDBUser.get_friend_circles(ack_hash["user_id"], loutput):
+                current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
+                return {"status": "failure"}, 401
+            return {'token': access_token, 'data' : json.dumps(loutput)}, 200
         except Exception as e:
             print ("The error is ", e)
             return {'token': 'n/a'}, 400

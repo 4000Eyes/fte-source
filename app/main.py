@@ -43,8 +43,6 @@ def create_app(config_name: str):
     flask_bcrypt.init_app(app)
     dbx.init_app(app)
 
-
-
     #loud_mongodb.db.test_collection.insert_one({"From Flask": "Working through Flask23"})
 
     with app.app_context():

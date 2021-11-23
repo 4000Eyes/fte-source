@@ -1,7 +1,6 @@
 import pymongo
 import neo4j.exceptions
 import pymongo.collection
-
 from .extensions import NeoDB
 from flask import current_app, g, jsonify
 from pymongo import errors
@@ -359,7 +358,7 @@ class SearchDB:
 
     def get_users(self, username, output_list):
         try:
-            project_string = {"$project": { "first_name": 1, "last_name":1, "phone_number":1 , "full_name":1}}
+            project_string = {"$project": { "first_name": 1, "last_name":1, "phone_number":1 , "full_name":1, "user_id":1}}
             search_string = ({"$search": {"index": self.get_user_index(), "autocomplete": { "query": username,"path": "full_name","tokenOrder": "sequential"  }}})
             pipeline = [search_string, project_string]
             user_collection = pymongo.collection.Collection(g.db, self.get_user_collection())

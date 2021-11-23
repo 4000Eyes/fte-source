@@ -4,6 +4,7 @@ from flask import current_app
 from .gdbmethods import GDBUser
 #from .models import EmailUserQueue
 from .friendlistdb import FriendListDB
+from .mongodbfunc import MongoDBFunctions
 from .extensions import NeoDB
 class FriendCircleHelper:
     # Check and create user accounts if do not exist
@@ -19,7 +20,7 @@ class FriendCircleHelper:
         user_output = {}
         friend_circle_name = None
         try:
-
+            objMongo = MongoDBFunctions()
             objFriend = FriendListDB()
             objUser = GDBUser()
             driver = NeoDB.get_session()
@@ -27,9 +28,14 @@ class FriendCircleHelper:
             for user in user_info:
                 user["admin_friend_id"] = admin_friend_id
                 if objUser.get_user_by_phone(user["phone_number"], user_output) :
-                    user["friend_id"] = user_output["user_id"] if "user_id" in friend_hash else None
-                    user["linked_status"] = 1 if "user_id" in friend_hash else 0
-                    user["linked_user_id"] = user_output["user_id"] if "user_id" in friend_hash else None
+                    user["linked_status"] = 1 if "user_id" in user_output else 0
+                    user["linked_user_id"] = user_output["user_id"] if "linked_user_id" in user_output else None
+
+                    #Below code is need for emailing purposes
+                    if "user_id" not in user:
+                        user["user_type"] = "New"
+                    else:
+                        user["user_type"] = "Existing"
 
                     if objFriend.insert_friend(user, txn, friend_hash):
                         key = admin_friend_id + user.get("phone_number")
@@ -60,18 +66,21 @@ class FriendCircleHelper:
                             txn.rollback()
                             current_app.logger.error("Error in inserting the friend circle " + user_email_hash.get(member.get("phone_number")))
                             return False
-                """
-                ObjUserQueue = EmailUserQueue()
-                ObjUserQueue.friend_circle_id = None
-                ObjUserQueue.phone_number = user["phone_number"]
-                ObjUserQueue.email = user["email_address"] if "email_address" in user else None
-                ObjUserQueue.friend_circle_admin_id = admin_friend_id
-                ObjUserQueue.referred_user_id = user_email_hash.get("phone_number")
-                ObjUserQueue.comm_type = "whatsapp"
-                ObjUserQueue.status = 0
-                ObjUserQueue.save()
-            """
-            print ("Before committingt he transaction")
+                        email_hash = {}
+                        email_hash["referrer_user_id"] = admin_friend_id
+                        email_hash["referred_user_id"] = user_email_hash.get(member.get("phone_number"))
+                        email_hash["email_address"] = member["email_address"]
+                        email_hash["phone_nunber"] = member["phone_number"]
+                        email_hash["first_name"] = member["first_name"]
+                        email_hash["last_name"] = member["last_name"]
+                        email_hash["user_type"] = member["user_type"]
+                        email_hash["comm_type"] = "Whatsapp"
+                        email_hash["gender"] = member["gender"]
+                        email_hash["friend_circle_id"] = friend_circle_id.get("friend_circle_id")
+                        if not objMongo.insert_approval_queue(email_hash):
+                            txn.rollback()
+                            current_app.logger.error("Unable to insert a row into approval queue for " + email_hash["referred_user_id"] )
+                            return False
             txn.commit()
             return True
         except Exception as e:
