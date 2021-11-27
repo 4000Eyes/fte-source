@@ -154,7 +154,6 @@ class ManageFriendCircle(Resource):
                 return {"status": "success"}, 200
 
             if request_id == 6:
-
                 if not objFriend.approve_requests(user_info["referrer_user_id"], user_info["referred_user_id"], user_info["list_friend_circle_id"]):
                     return {"status": "Failure"}, 400
 

@@ -3,6 +3,7 @@ from flask_jwt_extended import create_access_token, decode_token
 from app.model.models import UserHelperFunctions
 from app.model.gdbmethods import GDBUser
 from flask_restful import Resource
+from app.model.email_manager import EmailManagement
 import datetime
 import json
 
@@ -21,6 +22,7 @@ class SignupApi(Resource):
             user_hash["email_address"] = body["email"]
             user_hash["password"] = body["password"]
             user_hash["user_type"] = body["user_type"]
+            user_hash["user_status"] = 0 # Meaning inactive
             user_hash["phone_number"] = body["phone_number"]
             user_hash["gender"] = body["gender"]
             user_hash["first_name"] = body["first_name"]
@@ -51,7 +53,16 @@ class SignupApi(Resource):
             if not objGDBUser.insert_user(user_hash, data):
                 current_app.logger.error("There is an issue in inserting the user")
                 return {'status': ' User already exists'}, 400
+            """
+            objEmail = EmailManagement()
+            registration_token = objHelper.generate_confirmation_token(user_hash["email_address"])
 
+            if registration_token is not None:
+                confirmation_url = 'https://www.gemift.com/token=' + registration_token
+                if objEmail.send_signup_email(user_hash["email_address"], user_hash["first_name"], user_hash["last_name"], confirmation_url):
+                    current_app.logger.error("Error completing registration. Unable to send email to the user")
+                    return {"Status" : "Failure in completing registration. Unable to send the email or the email is invalid"}, 401
+            """
             return {'data': json.dumps(data)}, 200
                 # Check if there is an approved invitation request for this user. If so, automatically add them to the circle
                 # and take them to the circle home page.
@@ -60,6 +71,28 @@ class SignupApi(Resource):
                 print ("The erros is", e)
                 current_app.logger.error(e)
                 return {'status': 'Failure in inserting the user'}, 500
+
+class RegistrationConfirmation(Resource):
+    def post(self):
+        content = request.get_json()
+        token = content["token"]
+        if token is None:
+            return {"Status" : "Unable to validate the user"}, 400
+        objHelper = UserHelperFunctions()
+        objGDBUser = GDBUser()
+        loutput = []
+        email_address = objHelper.confirm_token(token)
+        if email_address is not None:
+            if not objGDBUser.get_user_by_email(email_address,loutput):
+                if not objGDBUser.activate_user(loutput[0]):
+                    current_app.logger.error("Unable to activate the user " +  email_address)
+                    return {"status" : "Failure. Unable to activate the user"}, 400
+                return {"status": "Successfully activated"}, 200
+            else:
+                return {"status": "Failure. Unable to find the user information"}, 400
+        else:
+            return {"status" : "Failure. Invalid email address"}, 400
+
 
 class LoginApi(Resource):
     def post(self):
@@ -84,9 +117,10 @@ class LoginApi(Resource):
             expires = datetime.timedelta(days=7)
             access_token = create_access_token(identity=str(ack_hash["user_id"]), expires_delta=expires)
             loutput = []
-            if objGDBUser.get_friend_circles(ack_hash["user_id"], loutput):
+            if not objGDBUser.get_friend_circles(ack_hash["user_id"], loutput):
                 current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
                 return {"status": "failure"}, 401
+            loutput.append({"user_id" : ack_hash["user_id"]})
             return {'token': access_token, 'data' : json.dumps(loutput)}, 200
         except Exception as e:
             print ("The error is ", e)
