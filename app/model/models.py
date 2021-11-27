@@ -3,7 +3,7 @@
 from flask import current_app, g
 import pymongo.collection, pymongo.errors
 from flask_bcrypt import generate_password_hash, check_password_hash
-
+from itsdangerous import URLSafeTimedSerializer
 """
 
 class User(dbx.Document):
@@ -126,3 +126,17 @@ class UserHelperFunctions():
             current_app.logger.error(e)
             print("The error is ", e)
             return False
+
+    def generate_confirmation_token(self, email):
+        serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        return serializer.dumps(email, salt=current_app.config['SECURITY_PASSWORD_SALT'])
+
+    def confirm_token(self, token, expiration=3600):
+        serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        try:
+            email = serializer.loads(token,
+                                     salt = current_app.config['SECURITY_PASSWORD_SALT'],
+                                     max_age= expiration)
+            return email
+        except Exception as e:
+            return None

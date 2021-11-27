@@ -86,23 +86,23 @@ class CategoryManagement(Resource):
             return {"status": " Age and gender cannot be null"}, 400
         output = {}
         if request_id == 1 :
-            if not objCategory.get_category(age_lo, age_hi, gender, output):
+            if not objCategory.get_web_category(age_lo, age_hi, gender, output):
                 return {"status": "Error in fetching the category"}, 400
             return output, 200
 
         if request_id == 2:
-            if not objCategory.get_subcategory(category_id,age_lo, age_hi, gender, output):
-                return {"status": "Error in fetching the category"}, 400
+            if not objCategory.get_web_subcategory(category_id,age_lo, age_hi, gender, output):
+                return {"status": "Error in fetching the subcategory"}, 400
             return output, 200
 
         if request_id == 3:
             if not objCategory.get_brands( age_lo, age_hi, gender,  output):
-                return {"status": "Error in fetching the category"}, 400
+                return {"status": "Error in fetching the brands"}, 400
             return {"data": json.dumps(output)}, 200
 
         if request_id == 4:
             if not objCategory.get_web_subcategory_brands(subcategory_brand_list, age_lo, age_hi, gender, output):
-                return {"status": "Error in fetching the category"}, 400
+                return {"status": "Error in fetching the subcategory to brands combo"}, 400
             return output, 200
 
 

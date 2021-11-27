@@ -5,18 +5,19 @@ import json
 
 
 class EmailService(Resource):
-    def get(self):
+    def post(self):
         try:
-            request_id = request.args.get("request_id", type=int)
-            email_to = request.args.get("email_to", type=str)
+            content = request.get_json()
+            request_id = content["request_id"]
+            email_to = content["email_to"]
             if email_to is None:
                 current_app.logger.error("Email id cannot be none")
                 return {"status" : "Email to id is none"}, 400
-            email_to_first_name = request.args.get("email_to_first_name", type=str)
-            email_to_last_name = request.args.get("email_to_last_name", type=str)
-            secret_friend_name = request.args.get("secret_friend_name", type=str)
-            friend_list = request.args.get("friend_list", type=str)
-            call_to_action = request.args.get("call_to_action", type=str)
+            email_to_first_name = content["email_to_first_name"]
+            email_to_last_name = content["email_to_last_name"]
+            secret_friend_name = content["secret_first_name"]
+            friend_list = content["friend_list"]
+            call_to_action = content["call_to_action"]
 
             objEmail = EmailManagement()
             objEmail.init_service()

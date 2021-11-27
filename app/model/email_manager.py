@@ -45,6 +45,10 @@ class EmailManagement(Resource):
 
         try:
             # Send a transactional email
+            if self.get_contact(email_to) is None:
+                if not self.create_contact(email_to, first_name, last_name):
+                    current_app.logger.error("Unable to insert email to sendinblue" + email_to)
+                    return False
             api_response = api_instance.send_transac_email(send_smtp_email)
             current_app.logger.info(api_response)
             #pprint(api_response)
@@ -67,6 +71,10 @@ class EmailManagement(Resource):
 
         try:
             # Send a transactional email
+            if self.get_contact(email_to) is None:
+                if not self.create_contact(email_to, first_name, last_name):
+                    current_app.logger.error("Unable to insert email to sendinblue" + email_to)
+                    return False
             api_response = api_instance.send_transac_email(send_smtp_email)
             current_app.logger.info(api_response)
             #pprint(api_response)
@@ -81,9 +89,19 @@ class EmailManagement(Resource):
                                                       attributes={'FIRSTNAME': first_name, 'LASTNAME': last_name}, list_ids=[1])
 
         try:
+
             api_response = api_instance.create_contact(create_contact)
             current_app.logger.info(api_response)
             #print(api_response)
         except ApiException as e:
             print("Exception when calling ContactsApi->create_contact: %s\n" % e)
             current_app.logger.error(e)
+
+    def get_contact(self, email, loutput):
+        api_instance = sib_api_v3_sdk.ContactsApi(sib_api_v3_sdk.ApiClient(self.configuration))
+        try:
+            api_response = api_instance.get_contact_info(email)
+            loutput.append(api_response)
+        except ApiException as e:
+            print("Exception when calling ContactsApi->get_contact_info: %s\n" % e)
+            return None

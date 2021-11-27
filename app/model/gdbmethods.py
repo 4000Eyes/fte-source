@@ -191,13 +191,13 @@ class GDBUser(Resource):
                 user_id = self.get_id()
 
             query = "CREATE (u:User) " \
-                    " SET u.email_address = $email_address_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
+                    " SET u.email_address = $email_address_, u.password = $password_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
                     " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_," \
                     " u.mongo_indexed = $mongo_indexed_" \
                     " RETURN u.email_address, u.user_id"
 
             result = txn.run(query, email_address_=str(user_hash.get('email_address')),
-                                password=str(user_hash.get('password')),
+                                password_=str(user_hash.get('password')),
                                 user_id_=str(user_id),
                                 gender_=user_hash.get("gender"),
                                 phone_number_ = user_hash.get("phone_number"),
@@ -301,6 +301,25 @@ class GDBUser(Resource):
             current_app.logger.error("There is a error " + e.message)
             return False
 
+    def activate_user(self, user_id):
+        try:
+            driver = NeoDB.get_session()
+            query = f"MATCH (u:User{user_id:$user_id}) " \
+                    "SET " \
+                    " u.user_status = 1 " \
+                    " return count(u.user_id) as user_count"
+            result = driver.run(query, user_id_ = user_id )
+            record = result.single()
+            if record is not None:
+                if record["user_count"] > 0:
+                    return True
+                return False
+            else:
+                return False
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error("There is a error " + e.message)
+            return False
     def verify_friend_list(self, input_hash, txn, loutput):
         try:
             loutput = None
