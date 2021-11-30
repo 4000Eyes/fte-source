@@ -268,7 +268,7 @@ class FriendListDB:
                 return False
             if hshuser["referred_user_id"] is None:
                 key = hshuser["referrer_user_id"] + hshuser["email_address"]
-            circle_name = "Friend circle name "
+            circle_name = "Friend circle name " + hshuser["first_name"] + " " + hshuser["last_name"]
             friend_circle_hash = {}
             if not self.insert_friend_circle(output_hash[key]["user_id"], hshuser["referrer_user_id"], circle_name,friend_circle_hash, txn ):
                 txn.rollback()
@@ -350,16 +350,18 @@ class FriendListDB:
                                         " MERGE (n)-[:CIRCLE_CREATOR]->(x)-[:SECRET_FRIEND]->(m)" \
                                         " RETURN x.friend_circle_id as circle_id"
                         result = None
+                        friend_circle_id["friend_circle_id"] = None
                         result = txn.run(insert_circle, user_id_=str(user_id), friend_id_=str(friend_id), friend_circle_id_=str(fid),
                                         friend_circle_name_=friend_circle_name, created_dt_ = self.get_datetime())
                         if result is None:
                             current_app.logger.error("The friend circle record was not inserted for the combination ", friend_id, user_id, friend_circle_name)
                             return False
+
                         for record in result:
                             friend_circle_id["friend_circle_id"] = record["circle_id"]
                         print("The  query is ",     result.consume().query)
                         print("The  parameters is ", result.consume().parameters)
-                        if len(friend_circle_id) <= 0:
+                        if friend_circle_id["friend_circle_id"] is None:
                             current_app.logger.error("Friend circle id cannot be empty. Something wrong in creating the friend circle")
                             return False
                         print("Successfully inserted friend circle", friend_circle_id["friend_circle_id"])

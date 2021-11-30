@@ -161,3 +161,14 @@ class UserSearchManagement(Resource):
             print ("The output is", output)
             return {"data": json.loads(json_util.dumps(output))}, 200
         return {"status": "Error in Search"}, 400
+
+class AllCategoryRelatedManagement(Resource):
+    def get(self):
+        content = {}
+        output = []
+        content["text"] = request.args.get("text")
+        objSearch = SearchDB()
+        if objSearch.get_cat_hierarchy(content["text"], output):
+            print ("The output is", output)
+            return {"data": json.loads(json_util.dumps(output))}, 200
+        return {"status": "Error in Search"}, 400

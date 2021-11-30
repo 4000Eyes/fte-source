@@ -107,7 +107,7 @@ class LoginApi(Resource):
             ack_hash = {}
             ack_hash["user_id"] = None
             ack_hash["authorized"] = False
-            if not objUser.validate_login(body["email"], body["password"], ack_hash):
+            if not objUser.validate_login_gdb(body["email"], body["password"], ack_hash):
                 return {'error': 'System issue. Unable to verify the credentials'}, 401
             if not ack_hash["authorized"]:
                 return {"error": "password didnt match"}, 401
@@ -139,7 +139,7 @@ class ForgotPassword(Resource):
                 return None
             objUser = UserHelperFunctions()
             output_hash = {}
-            if objUser.get_user_info(body["email"], output_hash):
+            if objUser.get_user_info_gdb(body["email"], output_hash):
                 if "user_id" in output_hash:
                     expires = datetime.timedelta(hours=24)
                     reset_token = create_access_token(str(output_hash["user_id"]), expires_delta=expires)
@@ -165,7 +165,7 @@ class ResetPassword(Resource):
                 current_app.logger.error("The expected values password and oor reset token is missing")
                 return {'Error' : 'The expected values password or reset token are missing'}
             user_id = decode_token(reset_token)['identity']
-            if objUser.modify_user_credentials(user_id, password):
+            if objUser.modify_user_credentials_gdb(user_id, password):
                 return {"status" : "successfully reset"},  200
             return {"status": "Unsuccessful in resetting the password"}, 400
         except Exception as e:

@@ -4,6 +4,7 @@ from flask import current_app, g
 import pymongo.collection, pymongo.errors
 from flask_bcrypt import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer
+from app.model.gdbmethods import GDBUser
 """
 
 class User(dbx.Document):
@@ -72,6 +73,25 @@ class UserHelperFunctions():
     def check_password(self, pwd, upwd):
         return check_password_hash(pwd, upwd)
 
+    def validate_login_gdb(self, email, pwd, ack_hash):
+        try:
+            objDBUser = GDBUser()
+            if not objDBUser.get_user_by_email(email, ack_hash):
+                current_app.logger.error("Unable to get the user from the db for email " + email)
+                return False
+            if len(ack_hash) > 1:
+                current_app.logger.error("have more than one row for emai. Big problem " + email)
+                return False
+            if "password" not in ack_hash or "user_id" not in ack_hash:
+                current_app.logger.error("Unable to get the user from the db for email " + email)
+                return False
+            ack_hash["authorized"] = self.check_password(ack_hash["password"], pwd)
+            return True
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
     def validate_login(self, email,pwd, ack_hash):
         try:
             mongo_user = pymongo.collection.Collection(g.db, "user")
@@ -85,6 +105,24 @@ class UserHelperFunctions():
             current_app.logger.error(e)
             print("The error is ", e)
             return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
+    def get_user_info_gdb(self, email, output_hash):
+        try:
+            objDBUser = GDBUser()
+            if not objDBUser.get_user_by_email(email, output_hash):
+                current_app.logger.error("Unable to get the user from the db for email " + email)
+                return False
+            if len(output_hash) > 1:
+                current_app.logger.error("have more than one row for emai. Big problem " + email)
+                return False
+            if "password" not in output_hash or "user_id" not in output_hash:
+                current_app.logger.error("Unable to get the user from the db for email " + email)
+                return False
+            return True
         except Exception as e:
             current_app.logger.error(e)
             print("The error is ", e)
@@ -107,6 +145,20 @@ class UserHelperFunctions():
             print("The error is ", e)
             return False
 
+    def modify_user_credentials_gdb(self, user_id, password):
+        try:
+            objDBUser = GDBUser()
+            input_hash = {}
+            input_hash["user_id"] = user_id
+            input_hash["password"] = self.hash_password(password)
+            if not objDBUser.update_user_password(input_hash):
+                current_app.logger.error("Unable to update the password for user" + user_id)
+                return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
     def modify_user_credentials(self, user_id, password):
         try:
             mongo_user = pymongo.collection.Collection(g.db, "user")
@@ -117,7 +169,6 @@ class UserHelperFunctions():
                 if xres is not None:
                     return True
             return False
-
         except pymongo.errors as e:
             current_app.logger.error(e)
             print("The error is ", e)
