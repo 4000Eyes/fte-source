@@ -32,13 +32,21 @@ class SearchDB:
         self.__user_index = "auto_user_gemift"
         return self.__user_index
 
+    def get_category_index(self):
+        self.__category_index = "auto_cat_gemift"
+        return self.__category_index
+
     def get_search_collection(self):
         self.__product_collection = "gemift_product_db"
         return str(self.__product_collection)
 
     def get_user_collection(self):
-        self.__product_collection = "user"
-        return str(self.__product_collection)
+        self.__user_collection = "user"
+        return str(self.__user_collection)
+
+    def get_category_collection(self):
+        self.__category_collection = "cat_hierarchy"
+        return str(self.__category_collection)
 
     def get_datetime(self):
         self.__dttime = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -362,6 +370,32 @@ class SearchDB:
             search_string = ({"$search": {"index": self.get_user_index(), "autocomplete": { "query": username,"path": "full_name","tokenOrder": "sequential"  }}})
             pipeline = [search_string, project_string]
             user_collection = pymongo.collection.Collection(g.db, self.get_user_collection())
+            result = user_collection.aggregate(pipeline)
+            if result is not None:
+                for doc in result:
+                    print("The doc is ", doc)
+                    output_list.append(doc)
+                print("The result is ", len(output_list), output_list)
+                return True
+            else:
+                print("No output")
+                output_list = None
+            return True
+        except errors.PyMongoError as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
+    def get_cat_hierarchy(self, entity_name, output_list):
+        try:
+            project_string = {"$project": { "entity_name": 1, "entity_type":1, "entity_id":1}}
+            search_string = ({"$search": {"index": self.get_category_index(), "autocomplete": { "query": entity_name,"path": "entity_name","tokenOrder": "sequential"  }}})
+            pipeline = [search_string, project_string]
+            user_collection = pymongo.collection.Collection(g.db, self.get_category_collection())
             result = user_collection.aggregate(pipeline)
             if result is not None:
                 for doc in result:

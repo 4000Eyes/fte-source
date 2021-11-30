@@ -241,20 +241,16 @@ class CategoryManagementDB(Resource):
             current_app.logger.error("Error in linking brand to subcategory" + e)
             return False
 
-    def get_web_category(self, age_lo, age_hi, gender, output):
+    def get_web_category(self, output):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:WebCat) " \
-                    " WHERE " \
-                    " toInteger(a.age_lo) >= $age_lo_ " \
-                    " AND toInteger(a.age_hi) <= $age_hi " \
-                    " AND a.gender = $gender_  " \
-                    " RETURN a.web_category_id, a.web_category_name"
-            result = driver.run(query, age_lo_ = age_lo, age_hi_ = age_hi, gender_ = gender)
+                    " RETURN a.web_category_id as web_category_id, a.web_category_name as web_category_name"
+            result = driver.run(query)
             if result in None:
                 return False
             for record in result:
-                output[record["a.web_category_id"]] = record["a.web_category_name"]
+                output.append(result.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             print ("The error message is ", e.message)
@@ -268,9 +264,6 @@ class CategoryManagementDB(Resource):
                     " AND toInteger(a.age_lo) >= $age_lo_ " \
                     " AND toInteger(a.age_hi) <= $age_hi_ " \
                     " AND a.gender = $gender_ " \
-                    " AND toInteger(b.age_lo) >= $age_lo_ " \
-                    " AND toInteger(b.age_hi) <= $age_hi_ " \
-                    " AND b.gender = $gender_ " \
                     " RETURN a.web_subcategory_id, a.web_subcategory_name"
             result = driver.run(query, web_category_id_ = web_category_id, age_lo_ = age_lo, age_hi_ = age_hi, gender_ = gender)
             if result in None:
@@ -320,3 +313,4 @@ class CategoryManagementDB(Resource):
         except neo4j.exceptions.Neo4jError as e:
             print ("The error message is ", e.message)
             return False
+

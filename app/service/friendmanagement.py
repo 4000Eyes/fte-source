@@ -1,6 +1,7 @@
 from flask import request, current_app, jsonify
 from app.model.gdbmethods import GDBUser
 from app.model.friendlistdb import FriendListDB
+from app.model.categorydb import CategoryManagementDB
 from flask_restful import Resource
 from app.model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
@@ -18,23 +19,21 @@ class ManageFriendCircle(Resource):
             objGDBUser = GDBUser()
             objFriend = FriendListDB()
             content = request.get_json()
-            request_id = content["request_id"]
-            content["user_list"] = content["user_list"]
 
             if content is None:
                 current_app.logger.error("No parameters send into the friend circle api (post). Check")
                 return {"status":"failure"}, 500
-            if content["request_id"] is None:
+            if "request_id" not in content:
                 current_app.logger.error("No request id in the request")
                 return {"status": "Request id is missing"}, 500
+            request_id = content["request_id"]
 
-
+            user_list = content["user_list"] if "user_list" in content else None
 
             if request_id == 5 and content["user_list"] is None:
                 current_app.logger.error("User list is a key parameter for request id 5 and it is missine")
                 return {"status": "User list is a key parameter for request id 5 and it is missine"}, 500
 
-            user_list = content["user_list"] if "user_list" in content else None
 
             user_info = {}
             user_info["admin_friend_id"] =  content["admin_friend_id"] if "admin_friend_id" in content else None
@@ -137,6 +136,8 @@ class ManageFriendCircle(Resource):
                     return {"status": "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend"}, 400
                 return {"status" : "Error in creating the secret group"}, 200
             if request_id == 4:
+                if user_info["email_address"] is None or user_info["referrer_user_id"] is None:
+                    return {"status" : "Failure. email address and/or referrer user id cannot be null"}
                 if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_email(user_info["referrer_user_id"],
                                                                                         user_info["email_address"],
                                                                                         output) :
@@ -264,12 +265,10 @@ class InterestManagement(Resource):
     #jwt_required()
     def get(self):
 
-
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         #interest_category_id = content["interest_category_id"] if "interest_category_id" in content else None
         request_id = request.args.get("request_id", type=int)
-
         objGDBUser = GDBUser()
         loutput = []
 
@@ -287,6 +286,22 @@ class InterestManagement(Resource):
         else:
             return {"status": "failure"}, 400
         return {'categories': data}, 200
+
+        objCategory = CategoryManagementDB()
+
+        if requestid == 1:
+            if not objCategory.get_web_category(loutput):
+                current_app.logger.error("Unable to get the categories")
+                return {"status" : "Failure"}, 400
+            return {"category" : json.dumps(loutput)}, 200
+
+        if request_id == 2:
+            if not objGDBUser.get_subcategory_smart_recommendation(friend_circle_id, age_hi, age_lo, gender,
+                                                                   loutput):
+                current_app.logger.error(
+                    "Unable to get smarter recommendation for friend circle id" + friend_circle_id)
+                return {"status": "Failure in getting recommendation"}, 401
+            return {"subcategory": json.dumps(loutput)}, 200
 
 
 # Here is how the occasion management has been implemented.

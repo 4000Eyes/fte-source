@@ -130,7 +130,7 @@ class GDBUser(Resource):
             print("Inside the gdb user all function")
             query = "MATCH (u:User) " \
                     "WHERE u.email_address = $email_address_ " \
-                    "RETURN u.user_id, u.email_address, u.user_type"
+                    "RETURN u.user_id as user_id, u.email_address as email_address, u.user_type as user_type, u.password as password"
 
             results = driver.run(query, email_address_ =email_address)
             if results is None:
@@ -139,9 +139,9 @@ class GDBUser(Resource):
                 return True
             for record in results:
                 print("The user is", record)
-                output_data.append(record["u.user_id"])
-                output_data.append(record["u.email_address"])
-                output_data.append(record["u.user_type"])
+                output_data.append(record["user_id"])
+                output_data.append(record["email_address"])
+                output_data.append(record["user_type"])
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("THere is a syntax error", e.message, e.metadata)
@@ -301,6 +301,24 @@ class GDBUser(Resource):
             current_app.logger.error("There is a error " + e.message)
             return False
 
+    def update_user_password(self, user_hash):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (u:User{user_id:$user_id_}) " \
+                    "SET " \
+                    " u.password = $password_ " \
+                    " return count(u.user_id) as user_count"
+            result = driver.run(query, user_id_ = user_hash.get("user_id"), password_ = user_hash.get("password") )
+            record = result.single()
+            if record is not None:
+                if record["user_count"] > 0:
+                    return True
+                return False
+            else:
+                return False
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error("There is a error " + e.message)
+            return False
     def activate_user(self, user_id):
         try:
             driver = NeoDB.get_session()
@@ -824,6 +842,85 @@ class GDBUser(Resource):
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the query", e)
+            return False
+
+    def get_subcategory_smart_recommendation(self, friend_circle_id, age_hi, age_lo, gender, loutput):
+        try:
+            lsubcat = []
+            lcategory_id = []
+            list_web_cat = []
+            if self.get_category_interest(friend_circle_id,lcategory_id):
+                current_app.logger.error("Error in getting the category data for friend circle id" + friend_circle_id)
+                return False
+            if lcategory_id is not None:
+                for i in range(0, len(lcategory_id)):
+                    list_web_cat.append(lcategory_id[i])
+            else:
+                current_app.logger.info("Can't do much. Yuo should have some categories chosen prior to this call for this to work")
+                return False
+            driver = NeoDB.get_session()
+            query = "MATCH (a:friend_list)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebSubCat) " \
+                    "RETURN distinct b.subcategory_id as subcategory_id," \
+                    " b.subcategory_name as subcategory_name, b.parent_id as parent_id"
+            result = driver.run(query, friend_circle_id_=friend_circle_id)
+            if result is None:
+                if self.get_subcategory_initial_recommendation(list_web_cat, age_hi, age_lo, loutput):
+                    current_app.logger.error(
+                        "Unable to get the initial recommendation for friend circle id" + friend_circle_id)
+                    return False
+                return True
+            else:
+                for record in result:
+                    lsubcat.append(record["subcategory_id"])
+                if not self.get_subcategory_beyond_top_node(lsubcat, age_hi, age_lo, gender, loutput):
+                    current_app.logger.error("Unable to get subcategory recommendation for friend circle id beyond top node " + friend_circle_id)
+                    return False
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("The error message is ", e.message)
+            return False
+        return True
+
+    def get_subcategory_initial_recommendation(self, lweb_category_id, age_hi, age_lo, gender, loutput):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (a:WebSubCat)-[:SUBCATEGORY_OF]->(b:WebCat)" \
+                    " WHERE toInteger(a.age_lo) >= $age_lo_ " \
+                    " AND toInteger(a.age_hi) <= $age_hi_ " \
+                    " AND a.gender = $gender_ " \
+                    " AND a.parent_id = 1 " \
+                    " RETURN distinct a.web_subcategory_id as web_subcategory_id, a.web_subcategory_name as web_subcategory_name"
+            result = driver.run(query, web_category_id_=lweb_category_id, age_lo_=age_lo, age_hi_=age_hi,
+                                gender_=gender)
+            for record in result:
+                loutput.append(record.data())
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("The error message is ", e.message)
+            return False
+
+    def get_subcategory_beyond_top_node(self, lweb_subcategory_id, age_hi, age_lo, gender, loutput):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (a:WebSubCat)" \
+                    " WHERE  toInteger(a.age_lo) >= $age_lo_ " \
+                    " AND toInteger(a.age_hi) <= $age_hi_ " \
+                    " AND a.gender = $gender_ " \
+                    " AND a.parent_id in $web_subcategory_id " \
+                    " RETURN a.web_subcategory_id as web_subcategory_id, a.web_subcategory_name as web_subcategory_name"
+            result = driver.run(query, web_category_id_=lweb_subcategory_id, age_lo_=age_lo, age_hi_=age_hi,
+                                gender_=gender)
+            for record in result:
+                loutput.append(record.data())
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("The error message is ", e.message)
             return False
 
 
