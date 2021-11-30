@@ -142,9 +142,14 @@ class GDBUser(Resource):
                 output_data.append(record["user_id"])
                 output_data.append(record["email_address"])
                 output_data.append(record["user_type"])
+                output_data.append(record["password"])
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("THere is a syntax error", e.message, e.metadata)
+            output_data = None
+            return False
+        except Exception as e:
+            print("THere is a syntax error", e)
             output_data = None
             return False
 
