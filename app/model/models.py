@@ -76,16 +76,15 @@ class UserHelperFunctions():
     def validate_login_gdb(self, email, pwd, ack_hash):
         try:
             objDBUser = GDBUser()
-            if not objDBUser.get_user_by_email(email, ack_hash):
+            loutput = []
+            if not objDBUser.get_user_by_email(email, loutput):
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
-            if len(ack_hash) > 1:
-                current_app.logger.error("have more than one row for emai. Big problem " + email)
-                return False
-            if "password" not in ack_hash or "user_id" not in ack_hash:
+            if loutput[0] is None or loutput[3] is None:
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
-            ack_hash["authorized"] = self.check_password(ack_hash["password"], pwd)
+            ack_hash["user_id"] = loutput[0]
+            ack_hash["authorized"] = self.check_password(loutput[3], pwd)
             return True
         except Exception as e:
             current_app.logger.error(e)
@@ -113,13 +112,11 @@ class UserHelperFunctions():
     def get_user_info_gdb(self, email, output_hash):
         try:
             objDBUser = GDBUser()
-            if not objDBUser.get_user_by_email(email, output_hash):
+            loutput = []
+            if not objDBUser.get_user_by_email(email, loutput):
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
-            if len(output_hash) > 1:
-                current_app.logger.error("have more than one row for emai. Big problem " + email)
-                return False
-            if "password" not in output_hash or "user_id" not in output_hash:
+            if loutput[0] is None or loutput[3] is None:
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
             return True
