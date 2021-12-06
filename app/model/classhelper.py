@@ -36,7 +36,7 @@ class FriendCircleHelper:
                         user["user_type"] = "New"
                     else:
                         user["user_type"] = "Existing"
-
+                    user["source_type"] = "WHATSAPP"
                     if objFriend.insert_friend(user, txn, friend_hash):
                         key = admin_friend_id + user.get("phone_number")
                         user_email_hash[user.get("phone_number")] = friend_hash[key]["user_id"]

@@ -142,15 +142,18 @@ class SearchDB:
             if "age_floor" in inputs:
                 #range_string =  {"range": {"gte": inputs["age_floor"],"path": "age_lo"}}
                 age_floor_hash = {}
+
                 age_floor_hash["range"] = {}
                 age_floor_hash["range"]["gte"] = inputs["age_floor"]
                 age_floor_hash["range"]["path"] = "age_lo"
+
             if "age_ceiling" in inputs:
                 #celing = {"range": {"gte": inputs["age_ceiling"],"path": "age_hi"}}
                 age_ceiling_hash = {}
                 age_ceiling_hash["range"] = {}
-                age_ceiling_hash["range"]["gte"] = inputs["age_ceiling"]
+                age_ceiling_hash["range"]["lte"] = inputs["age_ceiling"]
                 age_ceiling_hash["range"]["path"] = "age_hi"
+
             #{'range': {'path': 'created_dt','gt': myDatetime}}
 
             date_crieteria_hash = {}
@@ -159,6 +162,7 @@ class SearchDB:
             date_crieteria_hash["path"] = "created_dt"
 
             final_filter_list = [ age_floor_hash, age_ceiling_hash]
+
 
             if 'color' in inputs and len(inputs["color"]) > 0:
            # {'text': {'query': ['%s'], 'path': 'color'}},
@@ -200,6 +204,7 @@ class SearchDB:
                              }
             sort_string = {"$sort": { "price": sort_order }}
             pipeline = [search_string, sort_string]
+            print ("The pipeline query is", pipeline)
             user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
 
             result = user_collection.aggregate(pipeline)
