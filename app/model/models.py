@@ -76,15 +76,15 @@ class UserHelperFunctions():
     def validate_login_gdb(self, email, pwd, ack_hash):
         try:
             objDBUser = GDBUser()
-            loutput = []
+            loutput = {}
             if not objDBUser.get_user_by_email(email, loutput):
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
-            if loutput[0] is None or loutput[3] is None:
+            if loutput["user_id"] is None or loutput["password"] is None:
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
-            ack_hash["user_id"] = loutput[0]
-            ack_hash["authorized"] = self.check_password(loutput[3], pwd)
+            ack_hash["user_id"] = loutput["user_id"]
+            ack_hash["authorized"] = self.check_password(loutput["password"], pwd)
             return True
         except Exception as e:
             current_app.logger.error(e)
@@ -112,11 +112,11 @@ class UserHelperFunctions():
     def get_user_info_gdb(self, email, output_hash):
         try:
             objDBUser = GDBUser()
-            loutput = []
+            loutput = {}
             if not objDBUser.get_user_by_email(email, loutput):
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
-            if loutput[0] is None or loutput[3] is None:
+            if loutput["user_id"] is None or loutput["password"] is None:
                 current_app.logger.error("Unable to get the user from the db for email " + email)
                 return False
             return True

@@ -61,7 +61,6 @@ def create_app(config_name: str):
         print ("Before request I see this")
         g.db = cloud_mongodb.db
 
-
     @app.after_request
     def after_request(response):
         """ Logging after every request. """

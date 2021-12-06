@@ -9,7 +9,6 @@ import json
 
 
 class UserProductManagement(Resource):
-    @jwt_required()
     def get(self):
         try:
             #print ("The json is", request.get_json(force=True))

@@ -66,62 +66,146 @@ class ManageFriendCircle(Resource):
                 if not objGDBUser.get_user_by_id(user_info["referred_user_id"], output):
                     current_app.logger.error("Error in checking the user table for id", user_info["referred_user_id"])
                     return {"status": "Failure in accessing the user table for " + user_info["referred_user_id"]}, 400
-                if output.get("user_id") is not None:
+                if output["user_id"] is not None:
                     user_info["linked_status"] = 1
                     user_info["linked_user_id"] = output.get("user_id")
-                else:
+                    user_info["first_name"] = output["first_name"]
+                    user_info["last_name"] = output["last_name"]
+                    user_info["email_address"] = output["email_address"]
+                    user_info["location"] = output["location"]
+                    user_info["phone_number"] = output["phone_number"]
+                    user_info["friend_list_flag"] = "N"
+                else: # Check if the user is in friend list
+                    if not objFriend.get_friend_by_id(user_info["referred_user_id"], user_info["referrer_user_id"],output):
+                        current_app.logger.error("Error in checking the user table for id",
+                                                 user_info["referred_user_id"])
+                        return {"status": "Failure in accessing the user table for " + user_info[
+                            "referred_user_id"]}, 400
+                    if output["referred_user_id"] is None:
+                        current_app.logger.error("The referred user is not in the system "+ user_info["referred_user_id"])
+                        return {"status" : "The referred user is not in any system"}, 400
                     user_info["linked_status"] = 0
                     user_info["linked_user_id"] = None
-                output = {}
-                if objGDBUser.check_user_in_friend_circle( user_info["referred_user_id"], user_info["referrer_user_id"], user_info["friend_circle_id"], output):
-                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
-                        return {"status": "friend is already part of the friend circle"}, 400
-                output = {}
-                if objGDBUser.check_user_is_secret_friend(user_info["referrer_user_id"],user_info["referrer_user_id"], user_info["friend_circle_id"], output):
-                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
-                        return {"status": "secret friend cannot be added as friend"}, 400
-                output = {}
-                if objGDBUser.check_user_is_admin(user_info["referrer_user_id"], user_info["friend_circle_id"], output) :
-                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
-                        is_admin = 1
-                        if objFriend.add_friend_to_the_list_and_circle(user_info, output) :
-                            return {"status": "successfully added friend to the circle"},200
-                return {"status": "success"}, 200
+                    user_info["first_name"] = output["first_name"]
+                    user_info["last_name"] = output["last_name"]
+                    user_info["email_address"] = output["email_address"]
+                    user_info["location"] = output["location"]
+                    user_info["phone_number"] = output["phone_number"]
+                    user_info["friend_list_flag"] = "Y"
+
+                hshOutput = {}
+                if not objGDBUser.get_user_roles(user_info["referred_user_id"], user_info["referrer_user_id"],user_info["friend_circle_id"], hshOutput):
+                    current_app.logger.error("Unablet to get the roles for " + user_info["referred_user_id"])
+                    return {"status" : "Unable to check the roles of the user"}, 400
+
+                if len(hshOutput) <= 0:
+                    current_app.logger.error("Unablet to get the roles for " + user_info["referred_user_id"])
+                    return {"status" : "Unable to check the roles of the user"}, 400
+                if user_info["referred_user_id"] in hshOutput:
+                    if hshOutput[user_info["referred_user_id"]]["contrib_flag"] == "Y":
+                        return {"status", "User is already a contributor to the friend circle "}, 400
+
+                    if hshOutput[user_info["referred_user_id"]]["secret_friend_flag"] == "Y":
+                        return {"status", " recommended user is the secret friend "}, 400
+
+                    if hshOutput[user_info["referred_user_id"]]["circle_creator_flag"] == "Y":
+                        return {"status", " creator cannot be the contributor "}, 400
+
+                is_admin = 0
+                if user_info["referrer_user_id"] not in hshOutput:
+                    current_app.logger.error("The referrer is not in the friend circle. Something wrong")
+                    return {"status" : "The referrer is not part of the friend circle. Something is wrong"}, 400
+
+                if hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "N" and hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "N":
+                        return {"status": "The referrer is neither a circle creator nor a contributore"}, 400
+
+                if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
+                    is_admin = 1
+
+                if not objFriend.add_friend_to_the_list_and_circle(user_info, is_admin, output):
+                    current_app.logger.error("Unable to add friend as the contributore" + user_info["referred_user_id"])
+                    return {"status": "Failure. Unable to add friend as contributor"}, 400
+
+                if is_admin == 1:
+                    current_app.logger.error("Reffered friend is successfully added" + user_info["referred_user_id"])
+                else:
+                    current_app.logger.error("Reffered friend is successfully added to the queue and will require circle creator help" + user_info["referred_user_id"])
+
+                return {"status": json.dumps(output)}, 200
 
             if request_id == 2:
                 # This is an invitation recommended for a non existing friend circle member by an existing member
                 # Check if there is a friend circle exists with the recommended email address as a member or a secret
                 # friend
                 output.clear()
-                if objGDBUser.check_user_in_friend_circle_by_email( user_info["email_address"],user_info["referrer_user_id"],
-                                                                    user_info["friend_circle_id"], output):
-                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
-                        return {"status": "The user already exists in the friend circle"}, 400
-                if objGDBUser.check_user_is_secret_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], user_info["friend_circle_id"],
-                                                                   output) :
-                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
-                        return {"status": "The user exists and the person is also the secret friend of the circle"}, 400
-                if objGDBUser.check_user_is_admin( user_info["referrer_user_id"],
-                                                           user_info["friend_circle_id"],output):
-                    if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
-                        is_admin = 1
-                        output = {}
-                        if not objGDBUser.get_user(user_info["email_address"], output):
-                            current_app.logger.error("Error in checking the user table for id",
-                                                     user_info["referred_user_id"])
-                            return {"status": "Failure in accessing the user table for " + user_info[
-                                "referred_user_id"]}, 400
-                        if output.get("user_id") is not None:
-                            user_info["linked_status"] = 1
-                            user_info["linked_user_id"] = output.get("user_id")
-                        else:
-                            user_info["linked_status"] = 0
-                            user_info["linked_user_id"] = None
-                        if not objFriend.insert_friend_wrapper(user_info, output):
-                            current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
-                            print("Unable to insert friend into the friend list " + user_info["email_address"])
-                            return {"status": "Unable to insert friend into the friend list " + user_info["email_address"]}, 400
-                return {"status" : "Success"}, 200
+
+                hshOutput = {}
+                friend_record_exists = 0
+                referred_user_id = None
+
+                if not objGDBUser.get_user_role_as_contrib_secret_friend(user_info["email_address"], user_info["friend_circle_id"], hshOutput):
+                    current_app.logger.error("Unablet to get the roles for " + user_info["email_address"])
+                    return {"status" : "Unable to check the roles of the user"}, 400
+
+                if user_info["email_address"] in hshOutput:
+
+                    if hshOutput[user_info["email_address"]]["contrib_flag"] == "Y":
+                        return {"status", "User is already a contributor to the friend circle "}, 400
+
+                    if hshOutput[user_info["email_address"]]["secret_friend_flag"] == "Y":
+                        return {"status", " recommended user is the secret friend "}, 400
+
+                    if hshOutput[user_info["email_address"]]["circle_creator_flag"] == "Y":
+                        return {"status", " creator cannot be the contributor "}, 400
+
+                    if hshOutput[user_info["email_address"]]["user_id"] is not None and hshOutput[user_info["email_address"]]["friend_id"] is not None:
+                        friend_record_exists = 1
+                        referred_user_id = hshOutput[user_info["email_address"]]["user_id"]
+
+                if not objGDBUser.get_user_roles_for_referrer( user_info["referrer_user_id"],user_info["friend_circle_id"], hshOutput):
+                    current_app.logger.error("Unablet to get the roles for " + user_info["referrer_user_id"])
+                    return {"status" : "Unable to check the roles of the user"}, 400
+
+                if len(hshOutput) <= 0:
+                    current_app.logger.error("The referrer is not in the system. Bailing out" + user_info["referrer_user_id"])
+                    return False
+
+                is_admin = 0
+
+                if user_info["referrer_user_id"] not in hshOutput:
+                    current_app.logger.error("The referrer is not in the friend circle. Something wrong")
+                    return {"status" : "The referrer is not part of the friend circle. Something is wrong"}, 400
+
+                if hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "N" and hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "N":
+                        return {"status": "The referrer is neither a circle creator nor a contributore"}, 400
+
+                if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
+                    is_admin = 1
+
+                if not objGDBUser.get_user(user_info["email_address"], output):
+                    current_app.logger.error("Error in checking the user table for id",
+                                             user_info["referred_user_id"])
+                    return {"status": "Failure in accessing the user table for " + user_info[
+                        "referred_user_id"]}, 400
+
+                user_info["friend_list_flag"] = "N"
+
+                if output.get("user_id") is not None:
+                    user_info["linked_status"] = 1
+                    user_info["linked_user_id"] = output.get("user_id")
+                    user_info["friend_list_flag"] = "N"
+                else:
+                    user_info["linked_status"] = 0
+                    user_info["linked_user_id"] = None
+                    if friend_record_exists > 0:
+                        user_info["friend_list_flag"] = "Y"
+
+
+                if not objFriend.insert_friend_wrapper(user_info, output):
+                    current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
+                    print("Unable to insert friend into the friend list " + user_info["email_address"])
+                    return {"status": "Unable to insert friend into the friend list " + user_info["email_address"]}, 400
+                return {"status" : "Successfully added. The user has to be approved by the admin"}, 200
             if request_id == 3:
                 output = {}
                 print ("Calling request 3 function")
@@ -130,11 +214,11 @@ class ManageFriendCircle(Resource):
                                                                                output) :
                     if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
                         return {"status": "Secret Group with this combination exists"}, 400
-                if not objFriend.create_secret_friend(user_info, output):
+                if not objFriend.create_secret_friend_by_id(user_info, output):
                     print( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
                     current_app.logger.error( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
                     return {"status": "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend"}, 400
-                return {"status" : "Error in creating the secret group"}, 200
+                return {"status" : json.dumps(output)}, 200
             if request_id == 4:
                 if user_info["email_address"] is None or user_info["referrer_user_id"] is None:
                     return {"status" : "Failure. email address and/or referrer user id cannot be null"}
@@ -145,7 +229,9 @@ class ManageFriendCircle(Resource):
                         return {"status" : "secret circle for this email exists"}, 400
                 output = {}
                 if objFriend.create_secret_friend(user_info, output):
-                    return {"status": "successfully added friend to the circle"}, 200
+                    return {"status": json.dumps(output)}, 200
+                else:
+                    return {"status" : "Failure. Unable to create friend circle"}, 401
 
             if request_id == 5: # this is for whatsapp integration
                 print ("The user list is ", user_list)
@@ -155,7 +241,8 @@ class ManageFriendCircle(Resource):
                 return {"status": "success"}, 200
 
             if request_id == 6:
-                if not objFriend.approve_requests(user_info["referrer_user_id"], user_info["referred_user_id"], user_info["list_friend_circle_id"]):
+                loutput = []
+                if not objFriend.approve_requests(user_info["referrer_user_id"], user_info["referred_user_id"], user_info["list_friend_circle_id"], loutput):
                     return {"status": "Failure"}, 400
 
                 return {"status": "success"}, 200
@@ -212,6 +299,11 @@ class ManageFriendCircle(Resource):
     def delete(self):
         return {"Item successfully deleted": "thank you"}, 200
 
+class SecretFriendAttributeManagement(Resource):
+    def post(self):
+        return True
+    def get(self):
+        return True
 
 
 class InterestManagement(Resource):
