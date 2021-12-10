@@ -25,33 +25,46 @@ class FriendCircleHelper:
             objUser = GDBUser()
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
+
+
             for user in user_info:
+                friend_exists = 0
                 user["admin_friend_id"] = admin_friend_id
                 if objUser.get_user_by_phone(user["phone_number"], user_output) :
-                    user["linked_status"] = 1 if "user_id" in user_output else 0
-                    user["linked_user_id"] = user_output["user_id"] if "linked_user_id" in user_output else None
-
-                    #Below code is need for emailing purposes
-                    if "user_id" not in user:
-                        user["user_type"] = "New"
-                    else:
+                    if len(user_output) == 1:
+                        user["linked_status"] = 1 if "user_id" in user_output else 0
+                        user["linked_user_id"] = user_output["user_id"] if "user_id" in user_output else None
                         user["user_type"] = "Existing"
-                    user["source_type"] = "WHATSAPP"
-                    if objFriend.insert_friend(user, txn, friend_hash):
-                        key = admin_friend_id + user.get("phone_number")
-                        user_email_hash[user.get("phone_number")] = friend_hash[key]["user_id"]
-                        print ("The value of key is", friend_hash.get(key)["user_id"])
-                    else:
-                        current_app.logger.error("Error in inserting the user" + user["email_address"])
-                        txn.rollback()
+                    elif len(user_output) > 1:
+                        current_app.logger.error("We have an issue. More than one user with the same phone number")
                         return False
+                    else:
+                        hshOutput = {}
+                        if objFriend.get_friend_by_phone_number(user["email_address"], admin_friend_id, "WHATSAPP",hshOutput):
+                            if "user_id" in hshOutput and hshOutput["user_id"] is not None:
+                                user["linked_user_id"] = hshOutput["user_id"]
+                                user["linked_status"] = 1
+                                user["user_type"] = "Existing"
+                                friend_exists = 1
+                            else:
+                                user["linked_user_id"] = None
+                                user["linked_status"] = 0
+                                user["user_type"] = "New"
+                    user["source_type"] = "WHATSAPP"
+                    if friend_exists == 0:
+                        if objFriend.insert_friend(user, txn, friend_hash):
+                            key = admin_friend_id + user.get("phone_number")
+                            user_email_hash[user.get("phone_number")] = friend_hash[key]["user_id"]
+                            print ("The value of key is", friend_hash.get(key)["user_id"])
+                        else:
+                            current_app.logger.error("Error in inserting the user" + user["email_address"])
+                            txn.rollback()
+                            return False
                 #    user_email_hash[user.get("phone_number")] = friend_hash.get("user_id")
             friend_circle_name = "Friend circle for"
             for user in user_info:
-
-                print ("Before forming the circle name")
-                #friend_circle_name = " " .join(standard_text, member.get("first_name"),  member.get("last_name"))
                 friend_circle_id = {}
+                friend_circle_name = "Circle for " + user["first_name"] + " " + user["last_name"]
                 if not objFriend.insert_friend_circle(user_email_hash.get(user.get("phone_number")), admin_friend_id,
                                                     friend_circle_name, friend_circle_id, txn):
                     txn.rollback()

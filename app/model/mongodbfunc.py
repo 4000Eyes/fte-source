@@ -71,7 +71,7 @@ class MongoDBFunctions():
 
     def insert_user(self, user_hash):
         try:
-            if "user_id" not in user_hash and "email_address" not in user_hash:
+            if "user_id" not in user_hash and "email_address" not in user_hash and "phone_number"  not in user_hash:
                 current_app.logger.error("Required field either user id or email address is missing")
                 return False
             user_hash["password"] = user_hash["password"] if "password" in user_hash else None
@@ -80,6 +80,8 @@ class MongoDBFunctions():
             user_hash["first_name"] = user_hash["first_name"] if "first_name" in user_hash else None
             user_hash["last_name"] = user_hash["last_name"] if "last_name" in user_hash else None
             user_hash["user_type"] = user_hash["user_type"] if "user_type" in user_hash else None
+            user_hash["location"] = user_hash["location"] if "location" in user_hash else None
+            user_hash["referrer_user_id"] = user_hash["referrer_user_id"] if "referrer_user_id" in user_hash else None
 
             mongo_user_collection = pymongo.collection.Collection(g.db, "user")
             full_name = None
@@ -94,7 +96,8 @@ class MongoDBFunctions():
                                                   "first_name": user_hash.get("first_name"),
                                                   "last_name": user_hash.get("last_name"),
                                                   "full_name": full_name,
-                                                  "user_type": user_hash.get("user_type")
+                                                  "user_type": user_hash.get("user_type"),
+                                                  "referrer_user_id" : user_hash.get("referrer_user_id")
                                                   })
                 return True
             else:

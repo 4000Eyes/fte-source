@@ -5,6 +5,7 @@ from flask import current_app, g
 from flask_restful import Resource
 from .extensions import NeoDB
 import uuid
+from app.model.mongodbfunc import MongoDBFunctions
 import pymongo.collection
 from datetime import datetime
 from pymongo import errors
@@ -118,20 +119,31 @@ class GDBUser(Resource):
                     "WHERE u.phone_number = $phone_number_ " \
                     "RETURN u.user_id, u.email_address, u.user_type"
 
-            results = driver.run(query, phone_number_=phone_number)
+            results = driver.run(query, phone_number_ = phone_number)
             if results is None:
                 print("user does not exist")
                 output_data = None
                 return True
             for record in results:
                 print("The user is", record)
-                output_data.append(record["u.user_id"])
-                output_data.append(record["u.email_address"])
-                output_data.append(record["u.user_type"])
+                output_data["user_id"] = record["user_id"]
+                output_data["phone_number"] = record["phone_number"]
+                output_data["user_type"] = record["user_type"]
+                output_data["password"] = record["password"]
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("THere is a syntax error", e.message, e.metadata)
-            output_data = None
+            output_data["user_id"] = record["user_id"]
+            output_data["phone_number"] = record["phone_number"]
+            output_data["user_type"] = record["user_type"]
+            output_data["password"] = record["password"]
+            return False
+        except Exception as e:
+            print("THere is a syntax error", e)
+            output_data["user_id"] = record["user_id"]
+            output_data["phone_number"] = record["phone_number"]
+            output_data["user_type"] = record["user_type"]
+            output_data["password"] = record["password"]
             return False
 
     def get_user_by_email(self, email_address, output_data):
@@ -190,40 +202,124 @@ class GDBUser(Resource):
                         "email_address"))
                 txn.rollback
                 return False
-            # I need to decide on how to handle direct registration. That is, if I should insert a record into friend list. If yes, what would the friend id be.
 
-            if len(loutput) == 1:
-                if loutput[0]["linked_user_id"] is not None:
-                    output_hash["outcome"] = "User exists"
+
+            for record in loutput:
+                if "user_id" not in record:
+                    break;
+                if record["linked_user_id"] is not None:
+                    output_hash["outcome"] = "User already exists for this email and phone combination. Route it to support"
                     output_hash["redirect"] = "Login"
-                    txn.rollback()
-                    return True
-                elif loutput[0]["linked_user_id"] is None:
-                    user_id = loutput[0]["user_id"]
-            elif len(loutput) > 1:
-                temp_linked_user_id = None
-                counter = 0
-                for record in loutput:
-                    if record["linked_user_id"] is not None and counter == 0:
-                        temp_linked_user_id = record["linked_user_id"]
-                        user_id = record["user_id"]
-                        counter = 1
-                    elif record["linked_user_id"] is not None:
-                        if temp_linked_user_id != record["linked_user_id"]:
-                            output_hash[
-                                "outcome"] = "Systemic issue. Multiple user id for a given phone number or email address"
-                            output_hash["redirect"] = "Site Issue"
-                            txn.rollback()
-                            return False
+                    current_app.logger.error("User already exists for this email and phone combination. Route it to support" + user_hash.get("email_address") )
+                    return False
 
             if user_id is None:
                 user_id = self.get_id()
 
             query = "CREATE (u:User) " \
                     " SET u.email_address = $email_address_, u.password = $password_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
-                    " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_," \
+                    " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_, u.location = $location_," \
                     " u.mongo_indexed = $mongo_indexed_" \
                     " RETURN u.email_address, u.user_id"
+
+            result = txn.run(query, email_address_=str(user_hash.get('email_address')),
+                             password_=str(user_hash.get('password')),
+                             user_id_=str(user_id),
+                             gender_=user_hash.get("gender"),
+                             phone_number_=user_hash.get("phone_number"),
+                             user_type_=user_hash.get("user_type"),
+                             first_name_=user_hash.get("first_name"),
+                             last_name_=user_hash.get("last_name"),
+                             location_ = user_hash.get("location"),
+                             external_referrer_id=user_hash.get("external_referrer_id"),
+                             external_referrer_param=user_hash.get("external_referrer_param"),
+                             mongo_indexed_=user_hash.get("mongo_indexed"))
+            record = result.single()
+            info = result.consume().counters.nodes_created
+            if info > 0 and record is not None:
+                print("The user id is", record["u.user_id"])
+                output_hash["email_address"] = record["u.email_address"]
+                output_hash["user_id"] = record["u.user_id"]
+
+            if not self.update_friendlist(loutput, user_id, txn):
+                txn.rollback()
+                current_app.logger.error("We have an issue processing the registration request. Unable to friend list")
+                print("We have an issue processing the registration request. Unable to friend list")
+                return False
+            objMongo = MongoDBFunctions()
+            user_hash["referrer_user_id"] = None
+            user_hash["user_id"] = output_hash["user_id"]
+            if not objMongo.insert_user(user_hash):
+                current_app.logger.error("Unable to insert the user into search db" + user_hash.get("email_address"))
+                txn.rollback()
+                return False
+
+            output_hash["mongo_indexed"] = "Y"
+
+            if not self.update_user(output_hash, txn):
+                txn.rollback()
+                print("Error in updating the user")
+                return {"status": "Failure in updating the inserted record in the same transaction"}, 400
+                return False
+
+            hshOutput = {}
+            if not self.get_user_summary(user_id, txn, hshOutput):
+                txn.rollback()
+                current_app.logger.error("Unable to get the friend circle data for user" + user_hash.get("email_address"))
+                return {"status" : "Failure"}, 400
+
+            txn.commit()
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            txn.rollback()
+            current_app.logger.error("There is a error " + e.message)
+            return False
+        except errors.PyMongoError as e:
+            txn.rollback
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+        except Exception as e:
+            txn.rollback
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
+
+    def insert_user_by_phone(self, user_hash, output_hash):
+        try:
+            driver = NeoDB.get_session()
+            txn = driver.begin_transaction()
+            # Remember: Need the following in user hash
+            # friend_id, external_referrer_id (optional), but the parameter should be there
+            user_id = None
+            output_hash["phone_number"] = None
+            output_hash["user_id"] = None
+            loutput = []
+            if not self.verify_friend_list_by_phone(user_hash, txn, loutput):
+                current_app.logger.error(
+                    "Unable to verify the registration request against friend list for phone_number" + user_hash.get(
+                        "phone_number"))
+                txn.rollback
+                return False
+
+            for record in loutput:
+                if "user_id" not in record:
+                    break;
+                if record["linked_user_id"] is not None:
+                    output_hash["outcome"] = "User already exists for this email and phone combination. Route it to support"
+                    output_hash["redirect"] = "Login"
+                    current_app.logger.error("User already exists for this email and phone combination. Route it to support" + user_hash.get("phone_number") )
+                    return False
+
+            if user_id is None:
+                user_id = self.get_id()
+
+            query = "CREATE (u:User) " \
+                    " SET u.email_address = $email_address_, u.password = $password_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
+                    " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_, u.location = $location_," \
+                    " u.mongo_indexed = $mongo_indexed_" \
+                    " RETURN u.phone_number, u.user_id"
 
             result = txn.run(query, email_address_=str(user_hash.get('email_address')),
                              password_=str(user_hash.get('password')),
@@ -248,38 +344,28 @@ class GDBUser(Resource):
                 current_app.logger.error("We have an issue processing the registration request. Unable to friend list")
                 print("We have an issue processing the registration request. Unable to friend list")
                 return False
-            mongo_user_collection = pymongo.collection.Collection(g.db, "user")
-            result = mongo_user_collection.find_one({"user_id": output_hash.get("user_id")})
-            if result is None:
-                full_name = user_hash.get("first_name") + " " + user_hash.get("last_name")
-                mongo_user_collection.insert_one({"user_id": output_hash.get("user_id"),
-                                                  "email": user_hash.get("email_address"),
-                                                  "password": user_hash.get("password"),
-                                                  "phone_number": user_hash.get("phone_number"),
-                                                  "gender": user_hash.get("gender"),
-                                                  "first_name": user_hash.get("first_name"),
-                                                  "last_name": user_hash.get("last_name"),
-                                                  "full_name": full_name,
-                                                  "user_type": user_hash.get("user_type")
-                                                  })
-                # Check if the user is in the friend list. Go search by email id and phone number if exists.
-                # if referrer exists use that to check
+            objMongo = MongoDBFunctions()
+            user_hash["referrer_user_id"] = None
+            user_hash["user_id"] = output_hash["user_id"]
+            if not objMongo.insert_user(user_hash):
+                current_app.logger.error("Unable to insert the user into search db" + user_hash.get("email_address"))
+                txn.rollback()
+                return False
 
-                output_hash["mongo_indexed"] = "Y"
+            output_hash["mongo_indexed"] = "Y"
 
-                if not self.update_user(output_hash, txn):
-                    txn.rollback()
-                    print("Error in updating the user")
-                    return {"status": "Failure in updating the inserted record in the same transaction"}, 400
-                    return False
+            if not self.update_user(output_hash, txn):
+                txn.rollback()
+                print("Error in updating the user")
+                return {"status": "Failure in updating the inserted record in the same transaction"}, 400
+                return False
 
-            friend_circles = []
-            for record in loutput:
-                if self.get_friend_circles(record["user_id"], friend_circles):
-                    current_app.logger.error("Unable to extract friend circle data for " + record["user_id"])
-                    txn.rollback()
-                    return False
-                output_hash.append(loutput)
+            hshOutput = {}
+            if not self.get_user_summary(user_id, txn, hshOutput):
+                txn.rollback()
+                current_app.logger.error("Unable to get the friend circle data for user" + user_hash.get("email_address"))
+                return {"status" : "Failure"}, 400
+
             txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -369,31 +455,73 @@ class GDBUser(Resource):
             current_app.logger.error("There is a error " + e.message)
             return False
 
+    def verify_friend_list_by_phone(self, input_hash, txn, loutput):
+        try:
+
+            fe_query = "MATCH (a:friend_list) " \
+                       " WHERE a.phone_number = $phone_number_  " \
+                       " return a.user_id as user_id, a.friend_id as friend_id, a.linked_user_id as linked_user_id, a.linked_status_id as linked_status_id"
+
+
+            if input_hash["phone_number"] is not None:
+                result = txn.run(fe_query, phone_number_=input_hash["phone_number"])
+            for record in result:
+                r = {}
+                r["user_id"] = record["a.user_id"]
+                r["friend_id"] = record["a.friend_id"]
+                r["linked_user_id"] = record["a.linked_user_id"]
+                r["linked_status_id"] = record["a.linked_status_id"]
+                loutput.append(r)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error("There is a error " + e.message)
+            return False
+        except errors.PyMongoError as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
+
+
     def verify_friend_list(self, input_hash, txn, loutput):
         try:
-            loutput = None
+
             fe_query = "MATCH (a:friend_list) " \
-                       " WHERE email_address = $email_address_ " \
+                       " WHERE a.email_address = $email_address_  " \
                        " return a.user_id, a.friend_id, a.linked_user_id, a.linked_status_id "
 
             fep_query = "MATCH (a:friend_list) " \
-                        " WHERE a.email_address = $email_address_ and a.phone_number = $phone_number_" \
-                        " return a.user_id, a.friend_id, a.linked_user_id, a.linked_status_id"
+                        " WHERE a.email_address = $email_address_  " \
+                        " return a.user_id, as user_id," \
+                        " a.friend_id as friend_id, " \
+                        "a.linked_user_id as linked_user_id, " \
+                        "a.linked_status_id as linked_status_id"
 
             fp_query = "MATCH (a:friend_list) " \
                        " WHERE a.phone_number = $phone_number_ " \
                        " return a.user_id, a.friend_id, a.linked_user_id, a.linked_status_id"
 
-            if input_hash["email_address"] is not None and input_hash["phone_number"] is not None:
-                result = txn.run(fep_query, email_address_=input_hash["email_address"],
-                                 phone_number_=input_hash["phone_number"])
-            elif input_hash["email_address"] is not None:
-                result = txn.run(fe_query, email_address_=input_hash["email_address"])
-            elif input_hash["phone_number"] is not None:
-                result = txn.run(fp_query, phone_number_=input_hash["phone_number"])
+            # if input_hash["email_address"] is not None and input_hash["phone_number"] is not None:
+            #     result = txn.run(fep_query, email_address_=input_hash["email_address"],
+            #                      phone_number_=input_hash["phone_number"])
+            # elif input_hash["email_address"] is not None:
+            #     result = txn.run(fe_query, email_address_=input_hash["email_address"])
+            # elif input_hash["phone_number"] is not None:
+            #     result = txn.run(fp_query, phone_number_=input_hash["phone_number"])
 
+            if input_hash["email_address"] is not None:
+                result = txn.run(fe_query, email_address_=input_hash["email_address"])
             for record in result:
-                loutput.append(record.data())
+                r = {}
+                r["user_id"] = record["a.user_id"]
+                r["friend_id"] = record["a.friend_id"]
+                r["linked_user_id"] = record["a.linked_user_id"]
+                r["linked_status_id"] = record["a.linked_status_id"]
+                loutput.append(r)
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("There is a error " + e.message)
@@ -410,13 +538,13 @@ class GDBUser(Resource):
     def update_friendlist(self, linput, user_id, txn):
         try:
 
-            update_fl_query = "UPDATE (fl:friend_list) " \
-                              "WHERE fl.friend_id=$friend_id_ and " \
-                              " fl.user_id = $user_id_ " \
+            update_fl_query = "MATCH (fl:friend_list{friend_id:$friend_id_,user_id : $user_id_ }) " \
                               "SET fl.linked_user_id = $linked_user_id_, " \
-                              " fl.linked_status_id = 1"
+                              " fl.linked_status_id = 1" \
+                              " RETURN fl.user_id"
+
             for record in linput:
-                result = txn.query(update_fl_query, friend_id_=record["friend_id"], user_id_=record["user_id"],
+                result = txn.run(update_fl_query, friend_id_=record["friend_id"], user_id_=record["user_id"],
                                    linked_user_id_=user_id)
                 if result is None:
                     current_app.logger.error("Unable to update the friend list record with user_id ", record["user_id"])
@@ -606,7 +734,7 @@ class GDBUser(Resource):
             return False
 
 
-    def get_user_role_as_contrib_secret_friend(self, email_address, friend_circle_id, hshOutput):
+    def get_user_role_as_contrib_secret_friend(self, email_address, referrer_user_id, friend_circle_id, hshOutput):
         try:
             driver = NeoDB.get_session()
             result = None
@@ -614,14 +742,16 @@ class GDBUser(Resource):
             query = " call { " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.email_address = $email_address_ AND" \
+                    " m.email_address = $email_address_ AND " \
+                    " m.friend_id = $friend_id_ AND " \
                     " m.source_type = 'DIRECT' " \
                     " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
                     " type(rr) as relationship" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.user_id = $email_address_ AND " \
+                    " m.user_id = $email_address_ AND" \
+                    " m.friend_id = $friend_id_ AND " \
                     " m.source_type = 'DIRECT' " \
                     " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
                     " type(rr) as relationship " \
@@ -632,7 +762,7 @@ class GDBUser(Resource):
                     " CASE when relationship = 'SECRET_FRIEND'  then 'Y' else 'N'  end as secret_friend_flag, " \
                     " CASE when relationship = 'CIRCLE_CREATOR'  then 'Y' else 'N' end  as circle_creator_flag "
 
-            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_= email_address)
+            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_= email_address, friend_id_ = referrer_user_id)
             counter = 0
             user_id = None
             for record in result:
@@ -1225,39 +1355,43 @@ class GDBUser(Resource):
             print("The error message is ", e.message)
             return False
 
-        def get_subcategory_count(self, user_id, hshOutput):
-            try:
-                driver = NeoDB.get_session()
-                query = " call { with MATCH (fl:friend_list)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(fc:friend_circle)" \
-                        " WHERE fc.secret_friend_id <> $user_id_  AND" \
-                        " fl.user_id = $user_id_" \
-                        " RETURN r.friend_circle_id " \
-                        " }  "
-                result = driver.run(query, user_id_ = user_id)
-                for record in result:
-                    hshOutput["subcategory_count"] = record["users"]
-                print("The  query is ", result.consume().query)
-                print("The  parameters is ", result.consume().parameters)
-                return True
-            except neo4j.exceptions.Neo4jError as e:
-                print("Error in executing the query", e)
-                return False
+    def get_user_summary(self, user_id, txn, hshOutput):
+        try:
 
-        def get_interest_count(self, friend_circle_id, hshOutput):
-            try:
-                driver = NeoDB.get_session()
-                fquery = " MATCH (n:friend_list)-[r:CONTRIBUTOR]->(fc:friend_circle)" \
-                         " WHERE fc.friend_circle_id = $friend_circle_id " \
-                         " RETURN count(r) as total_contributors"
-                result = driver.run(query, friend_circle_id_=friend_circle_id)
-                for record in result:
-                    hshOutput["contributor_count"] = record["users"]
-                print("The  query is ", result.consume().query)
-                print("The  parameters is ", result.consume().parameters)
-                return True
-            except neo4j.exceptions.Neo4jError as e:
-                print("Error in executing the query", e)
-                return False
+            query =  " match (ff:friend_list)-[rr]->(fc:friend_circle) " \
+                     " optional match (ff:friend_list)-[r:INTEREST]->(wc:WebCategory) " \
+                     " optional match (ff:friend_list)-[r:INTEREST]->(wsd:WebSubCategory) " \
+                     " call { with ff match (pp:friend_list)<-[]->(fc:friend_circle) " \
+                     " where ff.user_id = pp.user_id and " \
+                     " pp.user_id <> fc.secret_friend_id and " \
+                     " pp.linked_user_id = $user_id_ " \
+                     " return fc.friend_circle_id}  " \
+                     " return  fc.friend_circle_id as friend_circle_id," \
+                     " fc.friend_circle_name as friend_circle_name, " \
+                     " count(distinct ff.user_id) as total_contributors, " \
+                     " count( wc.web_category_id) as category_count, " \
+                     " count( wc.web_subcategory_id) as subcategory_count "
+
+            if txn is None:
+                txn = NeoDB.get_session()
+
+            result = txn.run(query, user_id_ = user_id)
+            for record in result:
+                hshOutput["friend_circle_id"] = record["friend_circle_id"]
+                hshOutput["friend_circle_name"] = record["friend_circle_name"]
+                hshOutput["total_contributors"] = record["total_contributors"]
+                hshOutput["category_count"] = record["category_count"]
+                hshOutput["subcategory_count"] = record["subcategory_count"]
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("Error in executing the query", e)
+            return False
+        except Exception as e:
+            print("Error in executing the query", e)
+            return False
+
 
         # friend_occasion
 
