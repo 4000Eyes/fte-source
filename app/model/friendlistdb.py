@@ -92,7 +92,8 @@ class FriendListDB:
             hshOutput["referred_user_id"] = None
             query = "MATCH (a:friend_list)" \
                     " WHERE " \
-                    " a.user_id = $user_id_ " \
+                    " a.user_id = $user_id_ AND" \
+                    " a.friend_id = $friend_id_ " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
                     "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
 
@@ -106,6 +107,8 @@ class FriendListDB:
                 hshOutput["location"] = record["location"]
                 hshOutput["first_name"] = record["first_name"]
                 hshOutput["last_name"] = record["last_name"]
+                hshOutput["linked_status"] = record["linked_status"]
+                hshOutput["linked_user_id"] = record["linked_user_id"]
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
@@ -116,20 +119,19 @@ class FriendListDB:
             print("The error is ", e)
             return False
 
-    def get_friend_by_email(self, email_address, source_type, hshOutput):
+    def get_friend_by_email(self, email_address, referrer_user_id, source_type, hshOutput):
 
         try:
             driver = NeoDB.get_session()
             hshOutput["referred_user_id"] = None
             query = "MATCH (a:friend_list)" \
                     " WHERE " \
-                    " a.email_address = $email_address_" \
-                    " AND a.source_type = $source_type_ " \
+                    " a.email_address = $email_address_ AND" \
+                    " a.friend_id = $friend_id_ AND " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
                     "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
 
-            result = driver.run(query, email_address_ = email_address, source_type_ = source_type)
-
+            result = driver.run(query, email_address_ = email_address, friend_id_ = referrer_user_id, source_type_ = source_type)
             for record in result:
                 hshOutput["referred_user_id"] = record["user_id"]
                 hshOutput["referrer_user_id"] = record["friend_id"]
@@ -138,6 +140,64 @@ class FriendListDB:
                 hshOutput["location"] = record["location"]
                 hshOutput["first_name"] = record["first_name"]
                 hshOutput["last_name"] = record["last_name"]
+                hshOutput["linked_statue"] = record["linked_status"]
+                hshOutput["linked_user_id"] = record["linked_user_id"]
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("The error is ", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
+    def get_friend_by_phone_number(self, email_address, referrer_user_id, source_type, hshOutput):
+
+        try:
+            driver = NeoDB.get_session()
+            hshOutput["referred_user_id"] = None
+            query = "MATCH (a:friend_list)" \
+                    " WHERE " \
+                    " a.phone_number = $phone_number AND" \
+                    " a.friend_id = $friend_id_ AND " \
+                    " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
+                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
+
+            result = driver.run(query, email_address_ = email_address, friend_id_ = referrer_user_id, source_type_ = source_type)
+            for record in result:
+                hshOutput["referred_user_id"] = record["user_id"]
+                hshOutput["referrer_user_id"] = record["friend_id"]
+                hshOutput["email_address"] = record["email_address"]
+                hshOutput["phone_number"] = record["phone_number"]
+                hshOutput["location"] = record["location"]
+                hshOutput["first_name"] = record["first_name"]
+                hshOutput["last_name"] = record["last_name"]
+                hshOutput["linked_statue"] = record["linked_status"]
+                hshOutput["linked_user_id"] = record["linked_user_id"]
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("The error is ", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
+    def get_friend_su_by_id(self, user_id, list_output):
+
+        try:
+            driver = NeoDB.get_session()
+            list_output = None
+            query = "MATCH (a:friend_list)" \
+                    " WHERE " \
+                    " a.user_id = $user_id_ " \
+                    " RETURN distinct a.user_id as user_id, a.linked_user_id as linked_user_id"
+
+            result = driver.run(query, user_id_ = user_id)
+            for record in result:
+                list_output.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
@@ -359,7 +419,6 @@ class FriendListDB:
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
                     return False
             if admin_flag == 1:
-
                 fquery = "MATCH  (n:friend_list), (fc:friend_circle) " \
                         " WHERE n.user_id = $user_id_ " \
                         " AND fc.friend_circle_id = $friend_circle_id_ " \
@@ -423,7 +482,7 @@ class FriendListDB:
                     user_output["referrer_user_id"] = hshuser["referrer_user_id"]
                     user_output["referred_user_id"] = hshuser["referred_user_id"]
                 else:
-                    hshuser["linked_status"] = 1
+                    hshuser["linked_status"] = 0
                     hshuser["linked_user_id"] = None
                     if not self.get_friend_by_email(hshuser["email_address"], "DIRECT", user_output):
                         current_app.logger.error("There is an issue getting information by email" + hshuser["email_address"])
@@ -433,6 +492,12 @@ class FriendListDB:
                         if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
                             friend_exists = "Y"
                             referred_user_id = user_output["referred_user_id"]
+                            hshuser["linked_status"] = user_output["linked_status"]
+                            hshuser["linked_user_id"] = user_output["linked_user_id"]
+                        else:
+                            hshuser["linked_status"] = 0
+                            hshuser["linked_user_id"] = None
+                            friend_exists = "N"
             else:
                 current_app.logger.error("There is an issue getting information by email" +  hshuser["email_address"])
                 txn.rollback()
@@ -455,10 +520,11 @@ class FriendListDB:
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
                     return False
 
+            if hshuser["group_name"] is None:
+                hshuser["group_name"] = "Friend circle name " + hshuser["first_name"] + " " + hshuser["last_name"]
 
-            circle_name = "Friend circle name " + hshuser["first_name"] + " " + hshuser["last_name"]
             friend_circle_hash = {}
-            if not self.insert_friend_circle(referred_user_id, hshuser["referrer_user_id"], circle_name,loutput, txn ):
+            if not self.insert_friend_circle(referred_user_id, hshuser["referrer_user_id"], hshuser["group_name"],loutput, txn ):
                 txn.rollback()
                 current_app.logger.error("Unable to create a friend circle with " + hshuser["referred_user_id"] + " as the secret friend")
                 print("Unable to create a friend circle with " + hshuser["referred_user_id"] + " as the secret friend")
@@ -485,6 +551,7 @@ class FriendListDB:
             user_output = {}
             friend_exists = "N"
             objUser = GDBUser()
+            record_exists = 0
             if objUser.get_user_by_id(hshuser["referred_user_id"], user_output):
                 if "user_id" in user_output:
                     if user_output["user_id"] is not None:
@@ -492,9 +559,16 @@ class FriendListDB:
                         user_output["linked_user_id"] = user_output["user_id"]
                         user_output["referrer_user_id"] = hshuser["referrer_user_id"]
                         user_output["referred_user_id"] = hshuser["referred_user_id"]
+                        record_exists = 1
                     else:
                         if self.get_friend_by_id(hshuser["referred_user_id"], hshuser["referrer_user_id"], user_output):
-                            friend_exists = "Y"
+                            if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
+                                record_exists = 1
+                                friend_exists = "Y"
+                            else:
+                                user_output["linked_user_id"] = None
+                                user_output["linked_status"] = 0
+
                         else:
                                 current_app.logger.error("The user is not in the system" + hshuser["email_address"])
                                 txn.rollback()
@@ -504,6 +578,12 @@ class FriendListDB:
                 txn.rollback()
                 return False
 
+            if not record_exists:
+                txn.rollback()
+                current_app.logger.error(
+                    "Unable to find a record anywhere for this user " + user_output["referred_user_id"])
+                print("Unable to find a record anywhere for this user "  + user_output["referred_user_id"])
+                return False
 
             user_output["source_type"] = "DIRECT"
             if friend_exists == "N":
@@ -517,9 +597,10 @@ class FriendListDB:
                     txn.rollback()
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
                     return False
-            circle_name = "Friend circle name for " + user_output["first_name"] + " " + user_output["last_name"]
+            if hshuser["group_name"] is None:
+                hshuser["group_name"] = "Friend circle name " + hshuser["first_name"] + " " + hshuser["last_name"]
             friend_circle_hash = {}
-            if not self.insert_friend_circle(hshuser["referred_user_id"], hshuser["referrer_user_id"], circle_name,loutput, txn ):
+            if not self.insert_friend_circle(hshuser["referred_user_id"], hshuser["referrer_user_id"], hshuser["group_name"],loutput, txn ):
                 txn.rollback()
                 current_app.logger.error("Unable to create a friend circle with " + user_output["referred_user_id"] + " as the secret friend")
                 print("Unable to create a friend circle with " + user_output["referred_user_id"] + " as the secret friend")
@@ -602,7 +683,7 @@ class FriendListDB:
                     record = result.single()
                     if record["circle_count"] <= 0:
                         insert_circle = " CREATE (x:friend_circle{friend_circle_id:$friend_circle_id_, " \
-                                        "friend_circle_name:$friend_circle_name_, secret_friend_id:$secret_friend_id_, created_dt:$created_dt_}) " \
+                                        "friend_circle_name:$friend_circle_name_, creator_id: $friend_id_, secret_friend_id:$secret_friend_id_, created_dt:$created_dt_}) " \
                                         " WITH x " \
                                         " MATCH (n:User{user_id:$friend_id_}), (x:friend_circle{friend_circle_id:$friend_circle_id_})" \
                                         ", (m:friend_list{user_id:$user_id_, friend_id:$friend_id_})" \
@@ -670,7 +751,8 @@ class FriendListDB:
             txn = driver.begin_transaction()
             objMongo = MongoDBFunctions()
             approval_queue_collection = pymongo.collection.Collection(g.db, "approval_queue")
-            result = approval_queue_collection.find_one({"referred_user_id": referred_user_id, "referrer_user_id":referrer_user_id, "friend_circle_id": {"$in": list_friend_circle_id}})
+            not_approved = 0
+            result = approval_queue_collection.find({"referred_user_id": referred_user_id, "referrer_user_id":referrer_user_id, "friend_circle_id": {"$in": list_friend_circle_id}, "approved_flag":not_approved})
             if result is not None:
                 for row in result:
                     fquery = "MATCH  (n:friend_list), (fc:friend_circle) " \
@@ -702,7 +784,7 @@ class FriendListDB:
                     txn.rollback()
                     current_app.logger.error("Error in updating the records for user " + referrer_user_id + "for circles " + list_friend_circle_id)
                     return False
-
+            txn.commit()
             return True
 
         except neo4j.exceptions.Neo4jError as e:

@@ -375,6 +375,24 @@ class SearchDB:
             search_string = ({"$search": {"index": self.get_user_index(), "autocomplete": { "query": username,"path": "full_name","tokenOrder": "sequential"  }}})
             pipeline = [search_string, project_string]
             user_collection = pymongo.collection.Collection(g.db, self.get_user_collection())
+
+            # "$search": {
+            #     "compound": {
+            #         "filter": [{
+            #             "text": {path: "city", query: "New York"}
+            #         }],
+            #         "must": [{
+            #             "autocomplete": {
+            #                 "query": `${request.query.term}
+            # `,
+            # "path": "name",
+            # "fuzzy": {
+            #     "maxEdits": 2,
+            #     "prefixLength": 3,
+            # },
+            # }, }
+            # }]}
+
             result = user_collection.aggregate(pipeline)
             if result is not None:
                 for doc in result:

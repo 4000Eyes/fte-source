@@ -149,7 +149,7 @@ class UserProductManagement(Resource):
 
 
 class UserSearchManagement(Resource):
-    @jwt_required()
+   # @jwt_required()
     def get(self):
         content = {}
         output = []
