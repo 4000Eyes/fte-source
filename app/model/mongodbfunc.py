@@ -85,7 +85,7 @@ class MongoDBFunctions():
 
             mongo_user_collection = pymongo.collection.Collection(g.db, "user")
             full_name = None
-            result = mongo_user_collection.find_one({"$or":[{"user_id": user_hash.get("user_id")},{"email":user_hash.get("email_address")}]})
+            result = mongo_user_collection.find_one({"$or":[{"user_id": user_hash.get("user_id")},{"email":user_hash.get("phone_number")}]})
             if result is None:
                 full_name = user_hash.get("first_name") + " " + user_hash.get("last_name")
                 mongo_user_collection.insert_one({"user_id": user_hash.get("user_id"),
@@ -96,6 +96,7 @@ class MongoDBFunctions():
                                                   "first_name": user_hash.get("first_name"),
                                                   "last_name": user_hash.get("last_name"),
                                                   "full_name": full_name,
+                                                  "location": user_hash.get("location"),
                                                   "user_type": user_hash.get("user_type"),
                                                   "referrer_user_id" : user_hash.get("referrer_user_id")
                                                   })

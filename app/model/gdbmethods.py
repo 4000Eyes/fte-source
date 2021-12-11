@@ -117,7 +117,7 @@ class GDBUser(Resource):
             print("Inside the gdb user all function")
             query = "MATCH (u:User) " \
                     "WHERE u.phone_number = $phone_number_ " \
-                    "RETURN u.user_id, u.email_address, u.user_type"
+                    "RETURN u.user_id, u.email_address, u.user_type, u.first_name, u.last_name, u.phone_number"
 
             results = driver.run(query, phone_number_ = phone_number)
             if results is None:
@@ -126,24 +126,26 @@ class GDBUser(Resource):
                 return True
             for record in results:
                 print("The user is", record)
-                output_data["user_id"] = record["user_id"]
-                output_data["phone_number"] = record["phone_number"]
-                output_data["user_type"] = record["user_type"]
-                output_data["password"] = record["password"]
+                output_data["user_id"] = record["u.user_id"]
+                output_data["phone_number"] = record["u.phone_number"]
+                output_data["user_type"] = record["u.user_type"]
+                output_data["first_name"] = record["u.first_name"]
+                output_data["last_name"] = record["u.last_name"]
+                output_data["email_address"] = record["u.email_address"]
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("THere is a syntax error", e.message, e.metadata)
-            output_data["user_id"] = record["user_id"]
-            output_data["phone_number"] = record["phone_number"]
-            output_data["user_type"] = record["user_type"]
-            output_data["password"] = record["password"]
+            output_data["user_id"] = None
+            output_data["phone_number"] = None
+            output_data["user_type"] = None
+            output_data["password"] = None
             return False
         except Exception as e:
             print("THere is a syntax error", e)
-            output_data["user_id"] = record["user_id"]
-            output_data["phone_number"] = record["phone_number"]
-            output_data["user_type"] = record["user_type"]
-            output_data["password"] = record["password"]
+            output_data["user_id"] = None
+            output_data["phone_number"] = None
+            output_data["user_type"] = None
+            output_data["password"] = None
             return False
 
     def get_user_by_email(self, email_address, output_data):
@@ -329,6 +331,7 @@ class GDBUser(Resource):
                              user_type_=user_hash.get("user_type"),
                              first_name_=user_hash.get("first_name"),
                              last_name_=user_hash.get("last_name"),
+                             location_ = user_hash.get("location"),
                              external_referrer_id=user_hash.get("external_referrer_id"),
                              external_referrer_param=user_hash.get("external_referrer_param"),
                              mongo_indexed_=user_hash.get("mongo_indexed"))
@@ -336,7 +339,7 @@ class GDBUser(Resource):
             info = result.consume().counters.nodes_created
             if info > 0 and record is not None:
                 print("The user id is", record["u.user_id"])
-                output_hash["email_address"] = record["u.email_address"]
+                output_hash["phone_number"] = record["u.phone_number"]
                 output_hash["user_id"] = record["u.user_id"]
 
             if not self.update_friendlist(loutput, user_id, txn):
@@ -467,10 +470,10 @@ class GDBUser(Resource):
                 result = txn.run(fe_query, phone_number_=input_hash["phone_number"])
             for record in result:
                 r = {}
-                r["user_id"] = record["a.user_id"]
-                r["friend_id"] = record["a.friend_id"]
-                r["linked_user_id"] = record["a.linked_user_id"]
-                r["linked_status_id"] = record["a.linked_status_id"]
+                r["user_id"] = record["user_id"]
+                r["friend_id"] = record["friend_id"]
+                r["linked_user_id"] = record["linked_user_id"]
+                r["linked_status_id"] = record["linked_status_id"]
                 loutput.append(r)
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -734,26 +737,52 @@ class GDBUser(Resource):
             return False
 
 
-    def get_user_role_as_contrib_secret_friend(self, email_address, referrer_user_id, friend_circle_id, hshOutput):
+    #def get_user_role_as_contrib_secret_friend(self, email_address, referrer_user_id, friend_circle_id, hshOutput): # phone primary key support
+    def get_user_role_as_contrib_secret_friend(self, phone_number, referrer_user_id, friend_circle_id, hshOutput):
         try:
             driver = NeoDB.get_session()
             result = None
 
+            #phone primary key support
+
+            # query = " call { " \
+            #         "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
+            #         "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
+            #         " m.email_address = $email_address_ AND " \
+            #         " m.friend_id = $friend_id_ AND " \
+            #         " m.source_type = 'DIRECT' " \
+            #         " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
+            #         " type(rr) as relationship" \
+            #         " UNION " \
+            #         "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
+            #         "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
+            #         " m.email_address = $email_address_ AND" \
+            #         " m.friend_id = $friend_id_ AND " \
+            #         " m.source_type = 'DIRECT' " \
+            #         " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
+            #         " type(rr) as relationship " \
+            #         " } " \
+            #         " return " \
+            #         " user_id ," \
+            #         " CASE when relationship = 'CONTRIBUTOR'  then 'Y' else 'N' end as contrib_flag, " \
+            #         " CASE when relationship = 'SECRET_FRIEND'  then 'Y' else 'N'  end as secret_friend_flag, " \
+            #         " CASE when relationship = 'CIRCLE_CREATOR'  then 'Y' else 'N' end  as circle_creator_flag "
+
             query = " call { " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.email_address = $email_address_ AND " \
+                    " m.phone_number = $phone_number_ AND " \
                     " m.friend_id = $friend_id_ AND " \
                     " m.source_type = 'DIRECT' " \
-                    " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
+                    " RETURN  m.phone_number as phone_number, m.user_id as user_id, m.friend_id as friend_id, " \
                     " type(rr) as relationship" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.user_id = $email_address_ AND" \
+                    " m.phone_number = $phone_number_ AND" \
                     " m.friend_id = $friend_id_ AND " \
                     " m.source_type = 'DIRECT' " \
-                    " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
+                    " RETURN  m.phone_number as phone_number, m.user_id as user_id, m.friend_id as friend_id, " \
                     " type(rr) as relationship " \
                     " } " \
                     " return " \
@@ -762,18 +791,30 @@ class GDBUser(Resource):
                     " CASE when relationship = 'SECRET_FRIEND'  then 'Y' else 'N'  end as secret_friend_flag, " \
                     " CASE when relationship = 'CIRCLE_CREATOR'  then 'Y' else 'N' end  as circle_creator_flag "
 
-            result = driver.run(query, friend_circle_id_=friend_circle_id, email_address_= email_address, friend_id_ = referrer_user_id)
+            result = driver.run(query, friend_circle_id_=friend_circle_id, phone_number_ = phone_number, friend_id_ = referrer_user_id)
             counter = 0
             user_id = None
             for record in result:
                 if counter == 0 or record["user_id"] != user_id :
                     user_id = record["email_address"]
-                    hshOutput[record["email_address"]] = collections.defaultdict(dict)
-                    hshOutput[record["email_address"]]["contrib_flag"] = "N"
-                    hshOutput[record["email_address"]]["secret_friend_flag"] = "N"
-                    hshOutput[record["email_address"]]["circle_creator_flag"] = "N"
-                    hshOutput[record["email_address"]]["user_id"] = None
-                    hshOutput[record["email_address"]]["friend_id"] = None
+
+                    # phone primary key support
+
+                    # hshOutput[record["email_address"]] = collections.defaultdict(dict)
+                    # hshOutput[record["email_address"]]["contrib_flag"] = "N"
+                    # hshOutput[record["email_address"]]["secret_friend_flag"] = "N"
+                    # hshOutput[record["email_address"]]["circle_creator_flag"] = "N"
+                    # hshOutput[record["email_address"]]["user_id"] = None
+                    # hshOutput[record["email_address"]]["friend_id"] = None
+
+
+                    hshOutput[record["phone_number"]] = collections.defaultdict(dict)
+                    hshOutput[record["phone_number"]]["contrib_flag"] = "N"
+                    hshOutput[record["phone_number"]]["secret_friend_flag"] = "N"
+                    hshOutput[record["phone_number"]]["circle_creator_flag"] = "N"
+                    hshOutput[record["phone_number"]]["user_id"] = None
+                    hshOutput[record["phone_number"]]["friend_id"] = None
+
                     counter = 1
 
                 if hshOutput[record["user_id"]]["user_id"] is None:
@@ -828,6 +869,7 @@ class GDBUser(Resource):
                     " RETURN  m.user_id as user_id, m.first_name as first_name, " \
                     " m.last_name as last_name, m.gender as gender, " \
                     " type(rr) as relationship"
+
 
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
@@ -1104,9 +1146,32 @@ class GDBUser(Resource):
             current_app.logger.error(e.message)
             return False
 
-
-
-
+    def check_friend_circle_with_admin_and_secret_friend_by_phone(self, friend_user_id, secret_phone_number,
+                                                                  output_hash):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (n:User)-[:CIRCLE_CREATOR]->(fc:friend_circle)-[SECRET_FRIEND]->(y:friend_circle)" \
+                    " WHERE n.user_id = $friend_user_id_ " \
+                    " AND y.friend_id = $friend_user_id_ and" \
+                    " y.phone_number = $phone_number_  " \
+                    " RETURN count(fc.friend_circle_id) as user_exists"
+            result = driver.run(query, friend_user_id_=friend_user_id, phone_number_=secret_phone_number)
+            record = result.single()
+            if record is not None:
+                print("The user is ", record["user_exists"])
+                output_hash["user_exists"] = record["user_exists"]
+            else:
+                current_app.logger.error(
+                    "Checking if the user is secret friend cannot return an empty cursor " + secret_phone_number)
+                print("Checking if the user is secret friend cannot return an empty cursor " + secret_phone_number)
+                return False
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print(e.message)
+            current_app.logger.error(e.message)
+            return False
 
         # interest object
         # friend_category_id

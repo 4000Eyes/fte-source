@@ -92,9 +92,10 @@ class PhoneSignUpAPI(Resource):
             user_hash["gender"] = body["gender"]
             user_hash["first_name"] = body["first_name"]
             user_hash["last_name"] = body["last_name"]
+            user_hash["location"] = body["location"]
             user_hash["mongo_indexed"] = "N"
 
-            if user_hash.get("email_address") is None or user_hash.get("user_type") is None or user_hash.get(
+            if user_hash.get("phone_number") is None or user_hash.get("user_type") is None or user_hash.get(
                     "password") is None or user_hash.get("phone_number") is None or user_hash.get(
                     "gender") is None or user_hash.get("first_name") is None or user_hash.get("last_name") is None:
                 current_app.logger.error(
@@ -195,6 +196,39 @@ class LoginApi(Resource):
         except Exception as e:
             print ("The error is ", e)
             return {'token': 'n/a'}, 400
+
+class LoginPhoneAPI(Resource):
+    def post(self):
+        try:
+            print("I am inside the login api function")
+            body = request.get_json()
+            if body is None:
+                current_app.logger.error("No parameters send into the login api (post). Check")
+                return {"status": "failure"}, 500
+            objGDBUser = GDBUser()
+            objUser = UserHelperFunctions()
+            ack_hash = {}
+            ack_hash["user_id"] = None
+            ack_hash["authorized"] = False
+            if not objUser.validate_phone_login_gdb(body["phone_number"], ack_hash):
+                return {'error': 'System issue. Unable to verify the credentials'}, 401
+            if not ack_hash["authorized"]:
+                return {"error": "phone number didnt match"}, 401
+            print("The password from the db is ", ack_hash["authorized"])
+            if ack_hash["user_id"] is None:
+                return {"Error": "User id is empty. Some technical issues"}, 401
+            expires = datetime.timedelta(days=7)
+            access_token = create_access_token(identity=str(ack_hash["user_id"]), expires_delta=expires)
+            hshoutput = {}
+            if not objGDBUser.get_user_summary(ack_hash["user_id"], None, hshoutput):
+                current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
+                return {"status": "failure"}, 401
+            hshoutput["user_id"] = ack_hash["user_id"]
+            return {'token': access_token, 'data': json.dumps(hshoutput)}, 200
+        except Exception as e:
+            print("The error is ", e)
+            return {'token': 'n/a'}, 400
+
 
 class ForgotPassword(Resource):
     def post(self):
