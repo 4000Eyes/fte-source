@@ -40,6 +40,7 @@ class ManageFriendCircle(Resource):
             user_info["referred_user_id"] =  content["referred_user_id"] if "referred_user_id" in content else None
             user_info["referrer_user_id"] =    content["referrer_user_id"] if "referrer_user_id" in content else None
             user_info["friend_circle_id"] =  content["friend_circle_id"] if "friend_circle_id" in content else None
+            user_info["phone_number"] =  content["phone_number"] if "phone_number" in content else None
             user_info["first_name"] = content["first_name"] if "first_name" in content else None
             user_info["last_name"] =  content["last_name"] if "last_name" in content else None
             user_info["email_address"]  =  content["email_address"] if "email_address" in content else None
@@ -85,13 +86,13 @@ class ManageFriendCircle(Resource):
                             "referred_user_id"]}, 400
 
                     if output["referred_user_id"] is not None:
-                        user_info["linked_status"] = 0
-                        user_info["linked_user_id"] = None
                         user_info["first_name"] = output["first_name"]
                         user_info["last_name"] = output["last_name"]
                         user_info["email_address"] = output["email_address"]
                         user_info["location"] = output["location"]
                         user_info["phone_number"] = output["phone_number"]
+                        user_info["linked_status"] = output["linked_status"]
+                        user_info["linked_user_id"] = output["linked_user_id"]
                         user_info["friend_list_flag"] = "Y"
                     else:
                         user_info["linked_status"] = 0
@@ -200,7 +201,8 @@ class ManageFriendCircle(Resource):
                     user_info["linked_user_id"] = output.get("user_id")
                     user_info["friend_list_flag"] = "N"
                 else:
-                    if not objFriend.get_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], "DIRECT", output):
+                    #if not objFriend.get_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], "DIRECT", output): # phone primary key support
+                    if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
                         current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
                         return {"status": "Unable to check the presence of user record in the db"}, 400
                     if "referred_user_id" in output and output["referred_user_id"] is not None:
@@ -210,23 +212,7 @@ class ManageFriendCircle(Resource):
                     else:
                         user_info["linked_status"] = 0
                         user_info["linked_user_id"] = None
-                        # list_output = []
-                        # if not objFriend.get_friend_su_by_id(user_info["email_address"], list_output):
-                        #     current_app.logger.error("Unable to get the friend information for user " + user_info["email_address"])
-                        #     return {"status" : "Failure in inviting the user"}, 400
-                        # linked_user_id = None
-                        # for record in list_output:
-                        #     stripped_linked_user_id = str(record["linked_user_id"]).strip()
-                        #     if stripped_linked_user_id is not None and linked_user_id is not None and stripped_linked_user_id != linked_user_id:
-                        #         current_app.logger.error("Multiple super user for this email address" + user_info["email_address"])
-                        #         return {"status" : "Bigger problem with multiple super user"}, 400
-                        #     if stripped_linked_user_id is not None:
-                        #         linked_user_id = stripped_linked_user_id
-                        # user_info["linked_user_id"] = linked_user_id
-                        # if linked_user_id is not None:
-                        #     user_info["linked_status"] = 1
-                        # else:
-                        #     user_info["linked_status"] = 0
+
                 if not objFriend.insert_friend_wrapper(user_info, output):
                     current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
                     print("Unable to insert friend into the friend list " + user_info["email_address"])
@@ -235,6 +221,7 @@ class ManageFriendCircle(Resource):
             if request_id == 3:
                 output = {}
                 print ("Calling request 3 function")
+
                 if objGDBUser.check_friend_circle_with_admin_and_secret_friend(user_info["referrer_user_id"],
                                                                                user_info["referred_user_id"],
                                                                                output) :
@@ -246,11 +233,15 @@ class ManageFriendCircle(Resource):
                     return {"status": "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend"}, 400
                 return {"status" : json.dumps(output)}, 200
             if request_id == 4:
-                if user_info["email_address"] is None or user_info["referrer_user_id"] is None:
-                    return {"status" : "Failure. email address and/or referrer user id cannot be null"}
-                if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_email(user_info["referrer_user_id"],
-                                                                                        user_info["email_address"],
-                                                                                        output) :
+                #if user_info["email_address"] is None or user_info["referrer_user_id"] is None: #phone primary key support
+                if user_info["phone_number"] is None or user_info["referrer_user_id"] is None:
+                    return {"status" : "Failure. phone number and/or referrer user id cannot be null"}
+                # if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_email(user_info["referrer_user_id"],
+                #                                                                         user_info["phone_number"],
+                #                                                                         output) :
+                #phone primary key support
+
+                if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_phone(user_info["referrer_user_id"],user_info["phone_number"], output):
                     if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
                         return {"status" : "secret circle for this email exists"}, 400
                 output = {}

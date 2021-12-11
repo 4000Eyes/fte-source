@@ -1,6 +1,6 @@
 from flask_restful import Resource
 
-from app.service.auth import SignupApi, LoginApi, ResetPassword, ForgotPassword, RegistrationConfirmation
+from app.service.auth import SignupApi, LoginApi, ResetPassword, ForgotPassword, RegistrationConfirmation, PhoneSignUpAPI, LoginPhoneAPI
 from app.service.friendmanagement import ManageFriendCircle, InterestManagement, OccasionManagement,SecretFriendAttributeManagement
 from app.service.category import CategoryManagement
 from app.service.userproductmanagement import UserProductManagement, UserSearchManagement, AllCategoryRelatedManagement
@@ -9,9 +9,12 @@ from app.service.email_svc import EmailManagement
 from app.main import api
 
 def initialize_routes(api):
-   api.add_resource(SignupApi, '/api/auth/signup')
+   #api.add_resource(SignupApi, '/api/auth/signup')
+   api.add_resource(PhoneSignUpAPI, '/api/auth/signup')
+   #api.add_resource(PhoneSignUpAPI, '/api/auth/phone/signup')
    api.add_resource(RegistrationConfirmation, '/api/user/confirm')
    api.add_resource(LoginApi, '/api/login')
+   api.add_resource(LoginPhoneAPI, '/api/phone/login')
    api.add_resource(ResetPassword, '/api/reset')
    api.add_resource(ForgotPassword, '/api/forgotpassword')
    api.add_resource(ManageFriendCircle, '/api/friend/circle')

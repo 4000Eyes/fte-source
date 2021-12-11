@@ -95,7 +95,8 @@ class FriendListDB:
                     " a.user_id = $user_id_ AND" \
                     " a.friend_id = $friend_id_ " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
-                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
+                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location," \
+                    "a.linked_status as linked_status, a.linked_user_id as linked_user_id "
 
             result = driver.run(query, user_id_ = user_id, friend_id_ = referrer_user_id)
 
@@ -152,19 +153,19 @@ class FriendListDB:
             print("The error is ", e)
             return False
 
-    def get_friend_by_phone_number(self, email_address, referrer_user_id, source_type, hshOutput):
+    def get_friend_by_phone_number(self, phone_number, referrer_user_id, source_type, hshOutput):
 
         try:
             driver = NeoDB.get_session()
             hshOutput["referred_user_id"] = None
             query = "MATCH (a:friend_list)" \
                     " WHERE " \
-                    " a.phone_number = $phone_number AND" \
-                    " a.friend_id = $friend_id_ AND " \
+                    " a.phone_number = $phone_number_ AND" \
+                    " a.friend_id = $friend_id_  " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
                     "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
 
-            result = driver.run(query, email_address_ = email_address, friend_id_ = referrer_user_id, source_type_ = source_type)
+            result = driver.run(query, phone_number_ = phone_number, friend_id_ = referrer_user_id, source_type_ = source_type)
             for record in result:
                 hshOutput["referred_user_id"] = record["user_id"]
                 hshOutput["referrer_user_id"] = record["friend_id"]
@@ -267,6 +268,69 @@ class FriendListDB:
             print("The error is ", e)
             return False
 
+    def insert_friend_by_phone(self, hshuser, txn, loutput):
+        try:
+            result = None
+            referrer_user_id = None
+            referred_user_id = None
+
+            print ("The email address and the number is ", hshuser["email_address"])
+            query = "MERGE (a:friend_list {friend_id:$friend_id_, phone_number:$phone_number_}) " \
+                    " ON MATCH set a.email_address = $email_address_ , " \
+                    "a.linked_status= $linked_status_, " \
+                    "a.linked_user_id=$linked_user_id_" \
+                    " ON CREATE set a.user_id = $user_id_, " \
+                    "a.friend_id=$friend_id_, " \
+                    "a.email_address=$email_address_, " \
+                    "a.phone_number=$phone_number_, " \
+                    "a.linked_status= $linked_status_, " \
+                    "a.linked_user_id=$linked_user_id_," \
+                    " a.source_type = $source_type_," \
+                    " a.location = $location_," \
+                    " a.first_name=$first_name_, a.last_name=$last_name_" \
+                    " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location "
+
+            if "referred_user_id" not in hshuser or hshuser["referred_user_id"] is None:
+                referred_user_id = self.get_id()
+            else:
+                referred_user_id = hshuser["referred_user_id"]
+            if "referrer_user_id" not in hshuser or hshuser["referrer_user_id"] is None:
+                referrer_user_id = self.get_id()
+            else:
+                referrer_user_id = hshuser["referrer_user_id"]
+            result = txn.run(query,
+                                phone_number_=hshuser["phone_number"] ,
+                                email_address_ = hshuser["email_address"],
+                                user_id_ = referred_user_id,
+                                friend_id_ = referrer_user_id,
+                                first_name_ = hshuser["first_name"],
+                                last_name_ = hshuser["last_name"],
+                                linked_status_ = hshuser["linked_status"],
+                                linked_user_id_ = hshuser["linked_user_id"],
+                                source_type_ = hshuser["source_type"],
+                                location_ = hshuser["location"]
+                                )
+            if result is None:
+                loutput = None
+                current_app.logger.error("The user was not inserted with phone " +  hshuser["phone_number"] +
+                                     " or email " + hshuser["email_address"] )
+                return False
+            else:
+                for record in result:
+                    print ("The record is ", record["user_id"])
+                    loutput[record["friend_id"] + record["phone_number"]] = record
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("The error is ", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
     def insert_friend_by_email(self, hshuser, txn, loutput):
         try:
             result = None
@@ -346,6 +410,7 @@ class FriendListDB:
                     "a.linked_status= $linked_status_, " \
                     "a.linked_user_id=$linked_user_id_," \
                     " a.source_type = $source_type_," \
+                    " a.location = $location_," \
                     " a.first_name=$first_name_, a.last_name=$last_name_" \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
 
@@ -369,7 +434,8 @@ class FriendListDB:
                                 last_name_ = hshuser["last_name"],
                                 linked_status_ = hshuser["linked_status"],
                                 linked_user_id_ = hshuser["linked_user_id"],
-                                source_type_ = hshuser["source_type"]
+                                source_type_ = hshuser["source_type"],
+                                location_ = hshuser["location"]
                                 )
             if result is None:
                 loutput = None
@@ -471,55 +537,73 @@ class FriendListDB:
             result = None
             output_hash = {}
             user_output = {}
+            referrer_output = {}
             objUser = GDBUser()
             referred_user_id = None
             friend_exists = "N"
-            if objUser.get_user_by_email(hshuser["email_address"], user_output):
-                if "user_id" in user_output and user_output["user_id"] is not None:
+            user_exists = 0
 
+            if objUser.get_user_by_id(hshuser["referrer_user_id"], referrer_output):
+                if "user_id" in referrer_output:
+                    txn.rollback()
+                    current_app.logger.error("The creator is not in the user table" + hshuser["referrer_user_id"])
+                    print ("The creator is not in the user table ", hshuser["referrer_user_id"])
+                    return False
+            else:
+                current_app.logger.error("Unable to retrieve data from the user table for the referrer")
+                txn.rollback()
+                return False
+
+            #if objUser.get_user_by_email(hshuser["email_address"], user_output): # phone primary key support
+            if objUser.get_user_by_phone(hshuser["phone_number"], user_output):
+                if "user_id" in user_output and user_output["user_id"] is not None:
                     hshuser["linked_status"] = 1
                     hshuser["linked_user_id"] = user_output["user_id"]
-                    user_output["referrer_user_id"] = hshuser["referrer_user_id"]
-                    user_output["referred_user_id"] = hshuser["referred_user_id"]
+                    user_exists = 1
                 else:
                     hshuser["linked_status"] = 0
                     hshuser["linked_user_id"] = None
-                    if not self.get_friend_by_email(hshuser["email_address"], "DIRECT", user_output):
-                        current_app.logger.error("There is an issue getting information by email" + hshuser["email_address"])
-                        txn.rollback()
-                        return False
-                    else:
-                        if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
-                            friend_exists = "Y"
-                            referred_user_id = user_output["referred_user_id"]
-                            hshuser["linked_status"] = user_output["linked_status"]
-                            hshuser["linked_user_id"] = user_output["linked_user_id"]
-                        else:
-                            hshuser["linked_status"] = 0
-                            hshuser["linked_user_id"] = None
-                            friend_exists = "N"
             else:
-                current_app.logger.error("There is an issue getting information by email" +  hshuser["email_address"])
+                current_app.logger.error("There is an issue getting information by email" +  hshuser["phone_number"])
                 txn.rollback()
                 return False
-            hshuser["source_type"] = "DIRECT"
+            # if not self.get_friend_by_email(hshuser["email_address"], "DIRECT", user_output): #phone primary key support
+            if not self.get_friend_by_phone_number(hshuser["phone_number"], hshuser["referrer_user_id"], "DIRECT",
+                                                   user_output):
+                current_app.logger.error("There is an issue getting information by email" + hshuser["phone_number"])
+                txn.rollback()
+                return False
+            else:
+                if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
+                    friend_exists = "Y"
+                    if user_exists == 0:
+                        hshuser["linked_status"] = user_output["linked_status"]
+                        hshuser["linked_user_id"] = user_output["linked_user_id"]
+                else:
+                    hshuser["linked_status"] = 0
+                    hshuser["linked_user_id"] = None
+                    friend_exists = "N"
 
+            hshuser["source_type"] = "DIRECT"
+            user_output["referrer_user_id"] = hshuser["referrer_user_id"]
+            user_output["referred_user_id"] = hshuser["referred_user_id"]
+            referred_user_id = hshuser["referred_user_id"]
             if friend_exists == "N":
-                if not self.insert_friend_by_email(hshuser, txn, output_hash):
+                #if not self.insert_friend_by_email(hshuser, txn, output_hash): #phone primary key support
+                if not self.insert_friend_by_phone(user_output, txn, output_hash):
                     txn.rollback()
-                    current_app.logger.error("Unable to insert the email address into friend circle " + hshuser["email_address"])
-                    print("Unable to insert the email address into friend circle " + hshuser["email_address"])
+                    current_app.logger.error("Unable to insert the email address into friend circle " + hshuser["phone_number"])
+                    print("Unable to insert the email address into friend circle " + hshuser["phone_number"])
                     return False
                 if hshuser["referred_user_id"] is None:
-                    key = hshuser["referrer_user_id"] + hshuser["email_address"]
+                    key = hshuser["referrer_user_id"] + hshuser["phone_number"]
                     referred_user_id = output_hash[key]["user_id"]
                 hshuser["user_id"] = referred_user_id # Need this for mongo insert
                 objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(hshuser):
+                if not objMongo.insert_user(user_output):
                     txn.rollback()
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
                     return False
-
             if hshuser["group_name"] is None:
                 hshuser["group_name"] = "Friend circle name " + hshuser["first_name"] + " " + hshuser["last_name"]
 
@@ -549,41 +633,58 @@ class FriendListDB:
             result = None
             output_hash = {}
             user_output = {}
+            referrer_output = {}
             friend_exists = "N"
             objUser = GDBUser()
             record_exists = 0
+
+            if objUser.get_user_by_id(hshuser["referrer_user_id"], referrer_output):
+                if "user_id" in referrer_output:
+                    txn.rollback()
+                    current_app.logger.error("The creator is not in the user table" + hshuser["referrer_user_id"])
+                    print ("The creator is not in the user table ", hshuser["referrer_user_id"])
+                    return False
+            else:
+                current_app.logger.error("Unable to retrieve data from the user table for the referrer")
+                txn.rollback()
+                return False
+
             if objUser.get_user_by_id(hshuser["referred_user_id"], user_output):
                 if "user_id" in user_output:
                     if user_output["user_id"] is not None:
                         user_output["linked_status"] = 1
                         user_output["linked_user_id"] = user_output["user_id"]
-                        user_output["referrer_user_id"] = hshuser["referrer_user_id"]
-                        user_output["referred_user_id"] = hshuser["referred_user_id"]
                         record_exists = 1
                     else:
-                        if self.get_friend_by_id(hshuser["referred_user_id"], hshuser["referrer_user_id"], user_output):
-                            if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
-                                record_exists = 1
-                                friend_exists = "Y"
-                            else:
-                                user_output["linked_user_id"] = None
-                                user_output["linked_status"] = 0
-
-                        else:
-                                current_app.logger.error("The user is not in the system" + hshuser["email_address"])
-                                txn.rollback()
-                                return False
+                        user_output["linked_user_id"] = None
+                        user_output["linked_status"] = 0
             else:
                 current_app.logger.error("Unable to retrieve data from the user table")
                 txn.rollback()
                 return False
 
-            if not record_exists:
+            if self.get_friend_by_id(hshuser["referred_user_id"], hshuser["referrer_user_id"], user_output):
+                if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
+                    friend_exists = "Y"
+                if record_exists == 0:
+                        user_output["linked_user_id"] = None
+                        user_output["linked_status"] = 0
+            else:
+                current_app.logger.error("The user is not in the system" + hshuser["email_address"])
+                txn.rollback()
+                return False
+
+            if not record_exists and friend_exists == "N":
                 txn.rollback()
                 current_app.logger.error(
                     "Unable to find a record anywhere for this user " + user_output["referred_user_id"])
                 print("Unable to find a record anywhere for this user "  + user_output["referred_user_id"])
                 return False
+
+
+
+            user_output["referrer_user_id"] = hshuser["referrer_user_id"]
+            user_output["referred_user_id"] = hshuser["referred_user_id"]
 
             user_output["source_type"] = "DIRECT"
             if friend_exists == "N":
@@ -593,7 +694,7 @@ class FriendListDB:
                     print("Unable to insert the email address into friend circle " + user_output["email_address"])
                     return False
                 objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(hshuser):
+                if not objMongo.insert_user(user_output):
                     txn.rollback()
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
                     return False
@@ -624,12 +725,13 @@ class FriendListDB:
             txn = driver.begin_transaction()
             if hshuser["friend_list_flag"] == "N":
                 hshuser["source_type"] = "DIRECT"
-                if not self.insert_friend_by_email(hshuser, txn, output_hash):
+                # if not self.insert_friend_by_email(hshuser, txn, output_hash): #phone primary key support
+                if not self.insert_friend_by_phone(hshuser, txn, output_hash):
                     txn.rollback()
                     current_app.logger.error("Unable to insert this user as a friend " + hshuser["email_address"])
                     print("Unable to insert this user as a friend " + hshuser["email_address"])
                     return False
-                key = hshuser["referrer_user_id"] + hshuser["email_address"]
+                key = hshuser["referrer_user_id"] + hshuser["phone_number"]
                 hshuser["referred_user_id"] = output_hash[key]["user_id"]
                 hshuser["user_id"] = hshuser["referred_user_id"]
                 objMongo = MongoDBFunctions()

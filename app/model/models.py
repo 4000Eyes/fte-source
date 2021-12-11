@@ -91,6 +91,24 @@ class UserHelperFunctions():
             print("The error is ", e)
             return False
 
+    def validate_phone_login_gdb(self, phone_number, ack_hash):
+        try:
+            objDBUser = GDBUser()
+            loutput = {}
+            if not objDBUser.get_user_by_phone(phone_number, loutput):
+                current_app.logger.error("Unable to get the user from the db for phone  " + phone_number)
+                return False
+            if loutput["user_id"] is None :
+                current_app.logger.error("Unable to get the user from the db for phone " + phone_number)
+                return False
+            ack_hash["user_id"] = loutput["user_id"]
+            ack_hash["authorized"] = 1
+            return True
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
     def validate_login(self, email,pwd, ack_hash):
         try:
             mongo_user = pymongo.collection.Collection(g.db, "user")
