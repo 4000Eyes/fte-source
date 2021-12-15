@@ -46,10 +46,8 @@ class ManageFriendCircle(Resource):
             user_info["email_address"]  =  content["email_address"] if "email_address" in content else None
             user_info["gender"]= content["gender"] if "gender" in content else None
             user_info["location"] = content["location"] if "location" in content else None
-            user_info["gender"] = content["email_address"] if "email_address" in content else None
             user_info["friend_circle_name"] = content["friend_circle_name"] if "friend_circle_name" in content else None
             user_info["list_friend_circle_id"] = content["list_friend_circle_id"] if "list_friend_circle_id" in content else None
-
             user_info["group_name"] = content["group_name"] if "group_name" in content else None
 
             # clean up the inputs before calling the functions
@@ -188,7 +186,7 @@ class ManageFriendCircle(Resource):
                 if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
                     is_admin = 1
 
-                if not objGDBUser.get_user(user_info["email_address"], output):
+                if not objGDBUser.get_user_by_phone(user_info["phone_number"], output):
                     current_app.logger.error("Error in checking the user table for id",
                                              user_info["referred_user_id"])
                     return {"status": "Failure in accessing the user table for " + user_info[
@@ -199,19 +197,20 @@ class ManageFriendCircle(Resource):
                 if output.get("user_id") is not None:
                     user_info["linked_status"] = 1
                     user_info["linked_user_id"] = output.get("user_id")
-                    user_info["friend_list_flag"] = "N"
                 else:
+                    user_info["linked_status"] = 0
+                    user_info["linked_user_id"] = None
                     #if not objFriend.get_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], "DIRECT", output): # phone primary key support
-                    if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
-                        current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
-                        return {"status": "Unable to check the presence of user record in the db"}, 400
-                    if "referred_user_id" in output and output["referred_user_id"] is not None:
-                        user_info["linked_status"] = output["linked_status"]
-                        user_info["linked_user_id"] = output["linked_user_id"]
-                        user_info["friend_list_flag"] = "Y"
-                    else:
-                        user_info["linked_status"] = 0
-                        user_info["linked_user_id"] = None
+                if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
+                    current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
+                    return {"status": "Unable to check the presence of user record in the db"}, 400
+                if "referred_user_id" in output and output["referred_user_id"] is not None:
+                    user_info["linked_status"] = output["linked_status"]
+                    user_info["linked_user_id"] = output["linked_user_id"]
+                    user_info["friend_list_flag"] = "Y"
+                else:
+                    user_info["linked_status"] = 0
+                    user_info["linked_user_id"] = None
 
                 if not objFriend.insert_friend_wrapper(user_info, output):
                     current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
@@ -512,3 +511,38 @@ class OccasionManagement(Resource):
                 return {"occasions", data}, 200
             else:
                 return {"status:": "Error in getting the occasions. try again"}, 500
+
+class FriendAttributes(Resource):
+    def post(self):
+        content = request.get_json()
+        objFriend = FriendListDB()
+        request_id = content["request_id"]
+        friend_circle_id = content["friend_circle_id"]
+        user_id = content["user_id"]
+        age = content["age"]
+        relation_type = content["relation_type"]
+
+        if request is None:
+            return {"status" : " Request id is missing"}, 400
+        if request_id == 1: # Adding Age
+            if not objFriend.add_secret_friend_age(user_id, friend_circle_id, age):
+                return {"status" : "Failure in adding age"}, 400
+        if request_id == 2: # Adding Relationship
+            if not objFriend.add_relationship(user_id, friend_circle_id, relation_type):
+                return {"status": "Failure in adding relationship"}, 400
+
+
+
+    def get(self):
+        request_id = request.args.get("request_id", type=int)
+        user_id = request.args.get("user_id", type=str)
+        friend_circle_id = request.args.get("friend_circle_id", type=str)
+        objFriend = FriendListDB()
+        hshOutput = {}
+        if request_id == 1: # get age
+            if objFriend.get_secret_friend_age(friend_circle_id, hshOutput):
+                return {"status" : " Error in getting age for the friend circle"}
+            return {"status" : json.dumps(hshOutput)}
+
+
+        return {"status" : "success"}, 200

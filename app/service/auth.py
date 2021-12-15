@@ -1,8 +1,11 @@
+import os
+
 from flask import Response, request, current_app, g
 from flask_jwt_extended import create_access_token, decode_token
 from app.model.models import UserHelperFunctions
 from app.model.gdbmethods import GDBUser
 from flask_restful import Resource
+import vonage
 from app.model.email_manager import EmailManagement
 import datetime
 import json
@@ -191,7 +194,7 @@ class LoginApi(Resource):
             if not objGDBUser.get_user_summary(ack_hash["user_id"], None, hshoutput):
                 current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
                 return {"status": "failure"}, 401
-            hshoutput["user_id"] =  ack_hash["user_id"]
+            hshoutput["logged_user_id"] =  ack_hash["user_id"]
             return {'token': access_token, 'data' : json.dumps(hshoutput)}, 200
         except Exception as e:
             print ("The error is ", e)
@@ -223,11 +226,54 @@ class LoginPhoneAPI(Resource):
             if not objGDBUser.get_user_summary(ack_hash["user_id"], None, hshoutput):
                 current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
                 return {"status": "failure"}, 401
-            hshoutput["user_id"] = ack_hash["user_id"]
+            hshoutput["logged_user_id"] = ack_hash["user_id"]
             return {'token': access_token, 'data': json.dumps(hshoutput)}, 200
         except Exception as e:
             print("The error is ", e)
             return {'token': 'n/a'}, 400
+
+class GemiftVonageOTP(Resource):
+    def post(self):
+        try:
+            content = request.get_json()
+            if "request_id" not in content:
+                return {"status" : "Required parameters are missing (phone number, request_id)"}, 400
+            request_id = content["request_id"]
+            vonage_api_key = os.environ.get("VONAGE_API_KEY")
+            vonage_api_secret = os.environ.get("VONAGE_API_SECRET")
+            client = vonage.Client(key=vonage_api_key, secret=vonage_api_secret)
+            verify = vonage.Verify(client)
+            hshOutput = {}
+            if request_id == 1:
+                if "phone_number" not in content:
+                    return {"status" : "Required parameter (phone) is missine"}, 400
+                phone_number = content["phone_number"]
+                response = verify.start_verification(number=phone_number, brand="Gemift")
+                if response["status"] == "0":
+                    print("Started verification request_id is %s" % (response["request_id"]))
+                    hshOutput["vonage_request_id"] = response["request_id"]
+                else:
+                    print("Error: %s" % response["error_text"])
+                    return {"status": "Error in validating teh request"}, 400
+
+            if request_id == 2:
+                if "vonage_request_id" not in content or "vonage_response_code" not in content:
+                    return {"status" : "Required parameters are missing"}, 400
+                response = verify.check(content["vonage_request_id"], code=content["vonage_response_code"])
+
+                if response["status"] == "0":
+                    print("Verification successful, event_id is %s" % (response["event_id"]))
+                    hshOutput["status"] = "success"
+                    hshOutput["event_id"] = response["event_id"]
+                else:
+                    print("Error: %s" % response["error_text"])
+                    return {"status": "Error in validting the code"}, 400
+
+            return {"status" : json.dumps(hshOutput)}
+
+        except Exception as e:
+            return {"status" : "Failure in vonage OTP processing"}    , 400
+
 
 
 class ForgotPassword(Resource):

@@ -295,7 +295,8 @@ class FriendListDB:
             else:
                 referred_user_id = hshuser["referred_user_id"]
             if "referrer_user_id" not in hshuser or hshuser["referrer_user_id"] is None:
-                referrer_user_id = self.get_id()
+                current_app.logger.error("Referrer id to insert a friend cannot be empty")
+                return False
             else:
                 referrer_user_id = hshuser["referrer_user_id"]
             result = txn.run(query,
@@ -899,5 +900,81 @@ class FriendListDB:
             current_app.logger.error("The error is " + e)
             return False
 
-    def add_secret_friend_age(self, age, user_id):
-        return True
+    def add_secret_friend_age(self, user_id, friend_circle_id, age):
+        try:
+            driver = NeoDB.get_session()
+            query = " MATCH (fc:friend_circle { friend_circle_id:$friend_circle_id} " \
+                    " SET fc.secret_friend_age = $secret_friend_age_," \
+                    " fc.last_set_by = $user_id_ " \
+                    " fc.updated_dt = $updated_dt_" \
+                    " RETURN fc.friend_circle_id as friend_circle_id"
+
+            result = driver.run(query, user_id_=user_id, updated_dt_ = self.get_datetime(), friend_circle_id_=friend_circle_id)
+
+            if result is not None:
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                return True
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print ("Error in adding contributors", e)
+            return False
+
+    def add_relationship(self, user_id, friend_circle_id, relation_type):
+        try:
+            #Here the assumption is the user cannot set relationship unless registered w
+            driver = NeoDB.get_session()
+            query = " MATCH  (n:User{user_id:$user_id_}),(fc:friend_circle{friend_circle_id:$friend_circle_id_}) " \
+                    " MERGE (n)-[r:RELATIONSHIP]->(fc) " \
+                    " ON CREATE " \
+                    " SET r.relation_type = $relation_type," \
+                    "r.created_dt = $created_dt_ " \
+                    " RETURN fc.friend_circle_id as friend_circle_id"
+
+            result = driver.run(query, user_id_=user_id,
+                                relation_type_ =relation_type,
+                                friend_circle_id_=friend_circle_id,
+                                created_dt_ = self.get_datetime())
+
+            if result is not None:
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                return True
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("Error in adding contributors", e)
+            return False
+
+
+    def get_secret_friend_age(self, friend_circle_id, hshOutput):
+        try:
+            #Here the assumption is the user cannot set relationship unless registered w
+            driver = NeoDB.get_session()
+            query = " MATCH  (fc:friend_circle{friend_circle_id:$friend_circle_id_}) " \
+                      " RETURN fc.secret_friend_id as secret_friend_id," \
+                    " fc.secret_friend_age as secret_friend_age"
+
+            result = driver.run(query, friend_circle_id_=friend_circle_id)
+            if result is not None:
+                record = result.single()
+                hshOutput["secret_friend_id"] = record["secret_friend_id"]
+                hshOutput["secret_friend_age"] = record["secret_friend_age"]
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                return True
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("Error in adding contributors", e)
+            return False
