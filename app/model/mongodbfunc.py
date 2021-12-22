@@ -1,4 +1,5 @@
 from flask import current_app, g
+import pymongo
 import pymongo.collection, pymongo.errors
 from datetime import datetime, date
 import dateutil
@@ -85,6 +86,7 @@ class MongoDBFunctions():
 
             mongo_user_collection = pymongo.collection.Collection(g.db, "user")
             full_name = None
+
             result = mongo_user_collection.find_one({"$or":[{"user_id": user_hash.get("user_id")},{"email":user_hash.get("phone_number")}]})
             if result is None:
                 full_name = user_hash.get("first_name") + " " + user_hash.get("last_name")

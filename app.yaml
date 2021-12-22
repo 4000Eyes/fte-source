@@ -6,3 +6,5 @@ env_variables:
   SECRET_KEY: "$5%sd@9*k12"
   EMAIL_SERVICE_API_KEY: "xkeysib-c54bf16670a13c5fca399f2b23c3ac99635360ed77a5e2225e2c9bd36cf8b420"
   COMPANY_NAME_FOR_EMAIL: "gemift"
+  VONAGE_API_KEY: "d8b1d37a"
+  VONAGE_API_SECRET: "YaYRHm0vEwfFRdeE"

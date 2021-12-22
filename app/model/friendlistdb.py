@@ -163,7 +163,8 @@ class FriendListDB:
                     " a.phone_number = $phone_number_ AND" \
                     " a.friend_id = $friend_id_  " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
-                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
+                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location, " \
+                    " a.linked_status as linked_status, a.linked_user_id as linked_user_id "
 
             result = driver.run(query, phone_number_ = phone_number, friend_id_ = referrer_user_id, source_type_ = source_type)
             for record in result:
@@ -174,7 +175,7 @@ class FriendListDB:
                 hshOutput["location"] = record["location"]
                 hshOutput["first_name"] = record["first_name"]
                 hshOutput["last_name"] = record["last_name"]
-                hshOutput["linked_statue"] = record["linked_status"]
+                hshOutput["linked_status"] = record["linked_status"]
                 hshOutput["linked_user_id"] = record["linked_user_id"]
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -295,7 +296,8 @@ class FriendListDB:
             else:
                 referred_user_id = hshuser["referred_user_id"]
             if "referrer_user_id" not in hshuser or hshuser["referrer_user_id"] is None:
-                referrer_user_id = self.get_id()
+                current_app.logger.error("Referrer id to insert a friend cannot be empty")
+                return False
             else:
                 referrer_user_id = hshuser["referrer_user_id"]
             result = txn.run(query,
@@ -544,7 +546,7 @@ class FriendListDB:
             user_exists = 0
 
             if objUser.get_user_by_id(hshuser["referrer_user_id"], referrer_output):
-                if "user_id" in referrer_output:
+                if "user_id" not in referrer_output:
                     txn.rollback()
                     current_app.logger.error("The creator is not in the user table" + hshuser["referrer_user_id"])
                     print ("The creator is not in the user table ", hshuser["referrer_user_id"])
@@ -585,12 +587,10 @@ class FriendListDB:
                     friend_exists = "N"
 
             hshuser["source_type"] = "DIRECT"
-            user_output["referrer_user_id"] = hshuser["referrer_user_id"]
-            user_output["referred_user_id"] = hshuser["referred_user_id"]
             referred_user_id = hshuser["referred_user_id"]
             if friend_exists == "N":
                 #if not self.insert_friend_by_email(hshuser, txn, output_hash): #phone primary key support
-                if not self.insert_friend_by_phone(user_output, txn, output_hash):
+                if not self.insert_friend_by_phone(hshuser, txn, output_hash):
                     txn.rollback()
                     current_app.logger.error("Unable to insert the email address into friend circle " + hshuser["phone_number"])
                     print("Unable to insert the email address into friend circle " + hshuser["phone_number"])
@@ -600,7 +600,7 @@ class FriendListDB:
                     referred_user_id = output_hash[key]["user_id"]
                 hshuser["user_id"] = referred_user_id # Need this for mongo insert
                 objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(user_output):
+                if not objMongo.insert_user(hshuser):
                     txn.rollback()
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
                     return False
@@ -639,7 +639,7 @@ class FriendListDB:
             record_exists = 0
 
             if objUser.get_user_by_id(hshuser["referrer_user_id"], referrer_output):
-                if "user_id" in referrer_output:
+                if "user_id" not in referrer_output:
                     txn.rollback()
                     current_app.logger.error("The creator is not in the user table" + hshuser["referrer_user_id"])
                     print ("The creator is not in the user table ", hshuser["referrer_user_id"])
@@ -899,5 +899,81 @@ class FriendListDB:
             current_app.logger.error("The error is " + e)
             return False
 
-    def add_secret_friend_age(self, age, user_id):
-        return True
+    def add_secret_friend_age(self, user_id, friend_circle_id, age):
+        try:
+            driver = NeoDB.get_session()
+            query = " MATCH (fc:friend_circle { friend_circle_id:$friend_circle_id} " \
+                    " SET fc.secret_friend_age = $secret_friend_age_," \
+                    " fc.last_set_by = $user_id_ " \
+                    " fc.updated_dt = $updated_dt_" \
+                    " RETURN fc.friend_circle_id as friend_circle_id"
+
+            result = driver.run(query, user_id_=user_id, updated_dt_ = self.get_datetime(), friend_circle_id_=friend_circle_id)
+
+            if result is not None:
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                return True
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print ("Error in adding contributors", e)
+            return False
+
+    def add_relationship(self, user_id, friend_circle_id, relation_type):
+        try:
+            #Here the assumption is the user cannot set relationship unless registered w
+            driver = NeoDB.get_session()
+            query = " MATCH  (n:User{user_id:$user_id_}),(fc:friend_circle{friend_circle_id:$friend_circle_id_}) " \
+                    " MERGE (n)-[r:RELATIONSHIP]->(fc) " \
+                    " ON CREATE " \
+                    " SET r.relation_type = $relation_type," \
+                    "r.created_dt = $created_dt_ " \
+                    " RETURN fc.friend_circle_id as friend_circle_id"
+
+            result = driver.run(query, user_id_=user_id,
+                                relation_type_ =relation_type,
+                                friend_circle_id_=friend_circle_id,
+                                created_dt_ = self.get_datetime())
+
+            if result is not None:
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                return True
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("Error in adding contributors", e)
+            return False
+
+
+    def get_secret_friend_age(self, friend_circle_id, hshOutput):
+        try:
+            #Here the assumption is the user cannot set relationship unless registered w
+            driver = NeoDB.get_session()
+            query = " MATCH  (fc:friend_circle{friend_circle_id:$friend_circle_id_}) " \
+                      " RETURN fc.secret_friend_id as secret_friend_id," \
+                    " fc.secret_friend_age as secret_friend_age"
+
+            result = driver.run(query, friend_circle_id_=friend_circle_id)
+            if result is not None:
+                record = result.single()
+                hshOutput["secret_friend_id"] = record["secret_friend_id"]
+                hshOutput["secret_friend_age"] = record["secret_friend_age"]
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                return True
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("Error in adding contributors", e)
+            return False

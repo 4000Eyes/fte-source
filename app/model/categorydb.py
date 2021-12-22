@@ -247,14 +247,17 @@ class CategoryManagementDB(Resource):
             query = "MATCH (a:WebCat) " \
                     " RETURN a.web_category_id as web_category_id, a.web_category_name as web_category_name"
             result = driver.run(query)
-            if result in None:
+            if result is None:
                 return False
             for record in result:
-                output.append(result.data())
+                output.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
-            print ("The error message is ", e.message)
+            print("The error message is ", e.message)
             return False
+        except Exception as e:
+            print ("The error message is ", e)
+            return  False
 
     def get_web_subcategory(self, web_category_id, age_lo, age_hi, gender, output):
         try:

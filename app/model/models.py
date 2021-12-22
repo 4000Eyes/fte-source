@@ -103,6 +103,12 @@ class UserHelperFunctions():
                 return False
             ack_hash["user_id"] = loutput["user_id"]
             ack_hash["authorized"] = 1
+            ack_hash["email_address"] = loutput["email_address"]
+            ack_hash["phone_number"] = loutput["phone_number"]
+            ack_hash["first_name"] = loutput["first_name"]
+            ack_hash["last_name"] = loutput["last_name"]
+            ack_hash["gender"] = loutput["gender"]
+            ack_hash["location"] = loutput["location"]
             return True
         except Exception as e:
             current_app.logger.error(e)
@@ -117,6 +123,12 @@ class UserHelperFunctions():
                 for row in result:
                     ack_hash["authorized"] = self.check_password(row["password"], pwd)
                     ack_hash["user_id"] = row["user_id"]
+                    ack_hash["email_address"] = row["email_address"]
+                    ack_hash["phone_number"] = row["phone_number"]
+                    ack_hash["first_name"] = row["first_name"]
+                    ack_hash["last_name"] = row["last_name"]
+                    ack_hash["gender"] = row["gender"]
+                    ack_hash["location"] = row["location"]
             return True
         except pymongo.errors as e:
             current_app.logger.error(e)

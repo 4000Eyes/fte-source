@@ -46,10 +46,8 @@ class ManageFriendCircle(Resource):
             user_info["email_address"]  =  content["email_address"] if "email_address" in content else None
             user_info["gender"]= content["gender"] if "gender" in content else None
             user_info["location"] = content["location"] if "location" in content else None
-            user_info["gender"] = content["email_address"] if "email_address" in content else None
             user_info["friend_circle_name"] = content["friend_circle_name"] if "friend_circle_name" in content else None
             user_info["list_friend_circle_id"] = content["list_friend_circle_id"] if "list_friend_circle_id" in content else None
-
             user_info["group_name"] = content["group_name"] if "group_name" in content else None
 
             # clean up the inputs before calling the functions
@@ -188,7 +186,7 @@ class ManageFriendCircle(Resource):
                 if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
                     is_admin = 1
 
-                if not objGDBUser.get_user(user_info["email_address"], output):
+                if not objGDBUser.get_user_by_phone(user_info["phone_number"], output):
                     current_app.logger.error("Error in checking the user table for id",
                                              user_info["referred_user_id"])
                     return {"status": "Failure in accessing the user table for " + user_info[
@@ -199,19 +197,20 @@ class ManageFriendCircle(Resource):
                 if output.get("user_id") is not None:
                     user_info["linked_status"] = 1
                     user_info["linked_user_id"] = output.get("user_id")
-                    user_info["friend_list_flag"] = "N"
                 else:
+                    user_info["linked_status"] = 0
+                    user_info["linked_user_id"] = None
                     #if not objFriend.get_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], "DIRECT", output): # phone primary key support
-                    if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
-                        current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
-                        return {"status": "Unable to check the presence of user record in the db"}, 400
-                    if "referred_user_id" in output and output["referred_user_id"] is not None:
-                        user_info["linked_status"] = output["linked_status"]
-                        user_info["linked_user_id"] = output["linked_user_id"]
-                        user_info["friend_list_flag"] = "Y"
-                    else:
-                        user_info["linked_status"] = 0
-                        user_info["linked_user_id"] = None
+                if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
+                    current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
+                    return {"status": "Unable to check the presence of user record in the db"}, 400
+                if "referred_user_id" in output and output["referred_user_id"] is not None:
+                    user_info["linked_status"] = output["linked_status"]
+                    user_info["linked_user_id"] = output["linked_user_id"]
+                    user_info["friend_list_flag"] = "Y"
+                else:
+                    user_info["linked_status"] = 0
+                    user_info["linked_user_id"] = None
 
                 if not objFriend.insert_friend_wrapper(user_info, output):
                     current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
@@ -281,11 +280,12 @@ class ManageFriendCircle(Resource):
 
     #@jwt_required()
     def get(self):
-
-
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         request_id = request.args.get("request_id", type=int)
+
+        if "request_id" is None:
+            return {"status": "Failure. No request id present in the request"}, 400
         output = []
         objGDBUser = GDBUser()
 
@@ -338,17 +338,18 @@ class InterestManagement(Resource):
                 current_app.logger.error("No parameters send into the interest api (post). Check")
                 return {"status":"failure"}, 500
 
-            user_id = content["user_id"] if "user_id" in content else None
-            creator_user_id = content["creator_user_id"] if "creator_user_id" in content else None
+            referred_user_id = content["referred_user_id"] if "referred_user_id" in content else None
+
             friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
 
-            if user_id is None or creator_user_id is None or friend_circle_id is None:
-                current_app.logger.error("Required parameters are not sent (user_id, content_user_id, friend_circle_id)")
+            if referred_user_id is None  or friend_circle_id is None:
+                current_app.logger.error("Required parameters are not sent (referrer, referred, friend_circle_id)")
                 print("Required parameters are not sent (user_id, content_user_id, friend_circle_id)")
                 return {"status":"Failure"}, 400
+            list_category_id = []
+            list_subcategory_id = []
             list_category_id = content["list_category_id"] if "list_category_id" in content else None #this should be list of hashs with each member having category_id and vote
-            list_subcategory_id = content[
-                "list_subcategory_id"] if "list_subcategory_id" in content else None  # this should be list of hashs with each member having subcategory_id and vote
+            list_subcategory_id = content["list_subcategory_id"] if "list_subcategory_id" in content else None  # this should be list of hashs with each member having subcategory_id and vote
             request_id = content["request_id"] if "request_id" in content else None
 
             objGDBUser = GDBUser()
@@ -356,15 +357,17 @@ class InterestManagement(Resource):
             if request_id == 1: # link use to category and sub category
                 print ("The request is", request.path, request.host_url, request.date, request.blueprint, request.endpoint, request.environ)
                 hshOutput = {}
-                if objGDBUser.check_user_in_friend_circle( user_id,creator_user_id, friend_circle_id, hshOutput) :
-                    if  len(hshOutput) > 0 and  hshOutput["relation_type"] != "SECRET_FRIEND":
+                if objGDBUser.check_user_in_friend_circle( referred_user_id, friend_circle_id, hshOutput) :
 
-                        if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(user_id, creator_user_id, friend_circle_id, list_category_id):
-                            print ("Issue inserting the relationship")
-                            return {"status":"Failure"}, 400
-                        if len(list_subcategory_id) > 0 and not objGDBUser.link_user_to_web_subcategory( user_id, creator_user_id,friend_circle_id, list_subcategory_id):
-                            print ("Issue inserting the relationship")
-                            return {"status":"Failure"}, 400
+                    if len(hshOutput) > 0 and  hshOutput["relation_type"] != "SECRET_FRIEND":
+                        if list_category_id is not None:
+                            if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(referred_user_id, friend_circle_id, list_category_id):
+                                print ("Issue inserting the relationship")
+                                return {"status":"Failure"}, 400
+                        if list_subcategory_id is not None:
+                            if len(list_subcategory_id)  > 0 and not objGDBUser.link_user_to_web_subcategory( referred_user_id,friend_circle_id, list_subcategory_id):
+                                print ("Issue inserting the relationship")
+                                return {"status":"Failure"}, 400
                 else:
                     print ("The user is not part of the circle or a secret friend trying to hack the circle")
                     return {"status": "Failure"}, 400
@@ -376,32 +379,35 @@ class InterestManagement(Resource):
 
     #jwt_required()
     def get(self):
-
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
-        #interest_category_id = content["interest_category_id"] if "interest_category_id" in content else None
+        age_hi =  request.args.get("age_hi", type=int)
+        age_lo = request.args.get("age_lo", type=int)
+        gender = request.args.get("gender", type=str)
         request_id = request.args.get("request_id", type=int)
         objGDBUser = GDBUser()
         loutput = []
 
-        # get all interests by friend circle
-        if objGDBUser.get_category_interest(friend_circle_id, loutput):
-            print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-            data = json.dumps(loutput)
-        else:
-            return {"status": "failure"}, 400
-        loutput1 = []
-        if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
-            print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-            loutput.append(loutput1)
-            data = json.dumps(loutput)
-        else:
-            return {"status": "failure"}, 400
-        return {'categories': data}, 200
+        if request_id == 3:
+            # get all interests by friend circle
+            if objGDBUser.get_category_interest(friend_circle_id, loutput):
+                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
+                data = json.dumps(loutput)
+            else:
+                return {"status": "failure"}, 400
+            loutput1 = []
+            if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
+                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
+                loutput.append(loutput1)
+                if len(loutput1) > 0:
+                    data = json.dumps(loutput)
+            else:
+                return {"status": "failure"}, 400
+            return {'categories': data}, 200
 
         objCategory = CategoryManagementDB()
 
-        if requestid == 1:
+        if request_id == 1:
             if not objCategory.get_web_category(loutput):
                 current_app.logger.error("Unable to get the categories")
                 return {"status" : "Failure"}, 400
@@ -512,3 +518,38 @@ class OccasionManagement(Resource):
                 return {"occasions", data}, 200
             else:
                 return {"status:": "Error in getting the occasions. try again"}, 500
+
+class FriendAttributes(Resource):
+    def post(self):
+        content = request.get_json()
+        objFriend = FriendListDB()
+        request_id = content["request_id"]
+        friend_circle_id = content["friend_circle_id"]
+        user_id = content["user_id"]
+        age = content["age"]
+        relation_type = content["relation_type"]
+
+        if request is None:
+            return {"status" : " Request id is missing"}, 400
+        if request_id == 1: # Adding Age
+            if not objFriend.add_secret_friend_age(user_id, friend_circle_id, age):
+                return {"status" : "Failure in adding age"}, 400
+        if request_id == 2: # Adding Relationship
+            if not objFriend.add_relationship(user_id, friend_circle_id, relation_type):
+                return {"status": "Failure in adding relationship"}, 400
+
+
+
+    def get(self):
+        request_id = request.args.get("request_id", type=int)
+        user_id = request.args.get("user_id", type=str)
+        friend_circle_id = request.args.get("friend_circle_id", type=str)
+        objFriend = FriendListDB()
+        hshOutput = {}
+        if request_id == 1: # get age
+            if objFriend.get_secret_friend_age(friend_circle_id, hshOutput):
+                return {"status" : " Error in getting age for the friend circle"}
+            return {"status" : json.dumps(hshOutput)}
+
+
+        return {"status" : "success"}, 200

@@ -82,13 +82,15 @@ class CategoryManagement(Resource):
         age_hi = request.args.get("age_hi", type=int)
         age_lo = request.args.get("age_lo", type=int)
         gender = request.args.get("gender", type=str)
+
+        output = []
+        if request_id == 1 :
+            if not objCategory.get_web_category(output):
+                return {"status": "Error in fetching the category"}, 400
+            return json.dumps(output), 200
+
         if age_lo is None or age_hi is None or gender is None:
             return {"status": " Age and gender cannot be null"}, 400
-        output = {}
-        if request_id == 1 :
-            if not objCategory.get_web_category(age_lo, age_hi, gender, output):
-                return {"status": "Error in fetching the category"}, 400
-            return output, 200
 
         if request_id == 2:
             if not objCategory.get_web_subcategory(category_id,age_lo, age_hi, gender, output):
