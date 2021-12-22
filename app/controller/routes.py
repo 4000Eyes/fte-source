@@ -1,4 +1,4 @@
-from flask_restful import Resource
+#from flask_restful import Resource
 
 from app.service.auth import SignupApi, LoginApi, ResetPassword, ForgotPassword, RegistrationConfirmation, PhoneSignUpAPI, LoginPhoneAPI, GemiftVonageOTP
 from app.service.friendmanagement import ManageFriendCircle, InterestManagement, OccasionManagement,SecretFriendAttributeManagement, FriendAttributes
@@ -6,7 +6,7 @@ from app.service.category import CategoryManagement
 from app.service.userproductmanagement import UserProductManagement, UserSearchManagement, AllCategoryRelatedManagement
 from app.service.notif_and_recommend import NotificationAndRecommendationDB
 from app.service.email_svc import EmailManagement
-from app.main import api
+#from app.main import api
 
 def initialize_routes(api):
    #api.add_resource(SignupApi, '/api/auth/signup')

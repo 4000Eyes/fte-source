@@ -17,6 +17,7 @@ from flask import Flask, request, g
 from app.config import config_by_name
 from app.model.extensions import NeoDB, RedisCache
 from app.service.extensions import logs
+import pymongo
 
 flask_bcrypt = Bcrypt()
 jwt = JWTManager()
@@ -55,11 +56,13 @@ def create_app(config_name: str):
         api.init_app(app)
         register_extensions(app)
         cloud_mongodb.init_app(app)
+
     print ("After initializing the context")
     @app.before_request
     def before_request():
         print ("Before request I see this")
         g.db = cloud_mongodb.db
+
 
     @app.after_request
     def after_request(response):

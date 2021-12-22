@@ -195,6 +195,12 @@ class LoginApi(Resource):
                 current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
                 return {"status": "failure"}, 401
             hshoutput["logged_user_id"] =  ack_hash["user_id"]
+            hshoutput["email_address"] = ack_hash["email_address"]
+            hshoutput["phone_number"] = ack_hash["phone_number"]
+            hshoutput["first_name"] = ack_hash["first_name"]
+            hshoutput["last_name"] = ack_hash["last_name"]
+            hshoutput["location"] =  ack_hash["location"]
+            hshoutput["gender"] = ack_hash["gender"]
             return {'token': access_token, 'data' : json.dumps(hshoutput)}, 200
         except Exception as e:
             print ("The error is ", e)
@@ -227,6 +233,12 @@ class LoginPhoneAPI(Resource):
                 current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
                 return {"status": "failure"}, 401
             hshoutput["logged_user_id"] = ack_hash["user_id"]
+            hshoutput["email_address"] = ack_hash["email_address"]
+            hshoutput["phone_number"] = ack_hash["phone_number"]
+            hshoutput["first_name"] = ack_hash["first_name"]
+            hshoutput["last_name"] = ack_hash["last_name"]
+            hshoutput["location"] =  ack_hash["location"]
+            hshoutput["gender"] = ack_hash["gender"]
             return {'token': access_token, 'data': json.dumps(hshoutput)}, 200
         except Exception as e:
             print("The error is ", e)

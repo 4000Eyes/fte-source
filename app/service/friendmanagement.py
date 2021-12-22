@@ -280,11 +280,12 @@ class ManageFriendCircle(Resource):
 
     #@jwt_required()
     def get(self):
-
-
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         request_id = request.args.get("request_id", type=int)
+
+        if "request_id" is None:
+            return {"status": "Failure. No request id present in the request"}, 400
         output = []
         objGDBUser = GDBUser()
 
@@ -337,17 +338,18 @@ class InterestManagement(Resource):
                 current_app.logger.error("No parameters send into the interest api (post). Check")
                 return {"status":"failure"}, 500
 
-            user_id = content["user_id"] if "user_id" in content else None
-            creator_user_id = content["creator_user_id"] if "creator_user_id" in content else None
+            referred_user_id = content["referred_user_id"] if "referred_user_id" in content else None
+
             friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
 
-            if user_id is None or creator_user_id is None or friend_circle_id is None:
-                current_app.logger.error("Required parameters are not sent (user_id, content_user_id, friend_circle_id)")
+            if referred_user_id is None  or friend_circle_id is None:
+                current_app.logger.error("Required parameters are not sent (referrer, referred, friend_circle_id)")
                 print("Required parameters are not sent (user_id, content_user_id, friend_circle_id)")
                 return {"status":"Failure"}, 400
+            list_category_id = []
+            list_subcategory_id = []
             list_category_id = content["list_category_id"] if "list_category_id" in content else None #this should be list of hashs with each member having category_id and vote
-            list_subcategory_id = content[
-                "list_subcategory_id"] if "list_subcategory_id" in content else None  # this should be list of hashs with each member having subcategory_id and vote
+            list_subcategory_id = content["list_subcategory_id"] if "list_subcategory_id" in content else None  # this should be list of hashs with each member having subcategory_id and vote
             request_id = content["request_id"] if "request_id" in content else None
 
             objGDBUser = GDBUser()
@@ -355,15 +357,17 @@ class InterestManagement(Resource):
             if request_id == 1: # link use to category and sub category
                 print ("The request is", request.path, request.host_url, request.date, request.blueprint, request.endpoint, request.environ)
                 hshOutput = {}
-                if objGDBUser.check_user_in_friend_circle( user_id,creator_user_id, friend_circle_id, hshOutput) :
-                    if  len(hshOutput) > 0 and  hshOutput["relation_type"] != "SECRET_FRIEND":
+                if objGDBUser.check_user_in_friend_circle( referred_user_id, friend_circle_id, hshOutput) :
 
-                        if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(user_id, creator_user_id, friend_circle_id, list_category_id):
-                            print ("Issue inserting the relationship")
-                            return {"status":"Failure"}, 400
-                        if len(list_subcategory_id) > 0 and not objGDBUser.link_user_to_web_subcategory( user_id, creator_user_id,friend_circle_id, list_subcategory_id):
-                            print ("Issue inserting the relationship")
-                            return {"status":"Failure"}, 400
+                    if len(hshOutput) > 0 and  hshOutput["relation_type"] != "SECRET_FRIEND":
+                        if list_category_id is not None:
+                            if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(referred_user_id, friend_circle_id, list_category_id):
+                                print ("Issue inserting the relationship")
+                                return {"status":"Failure"}, 400
+                        if list_subcategory_id is not None:
+                            if len(list_subcategory_id)  > 0 and not objGDBUser.link_user_to_web_subcategory( referred_user_id,friend_circle_id, list_subcategory_id):
+                                print ("Issue inserting the relationship")
+                                return {"status":"Failure"}, 400
                 else:
                     print ("The user is not part of the circle or a secret friend trying to hack the circle")
                     return {"status": "Failure"}, 400
@@ -375,32 +379,35 @@ class InterestManagement(Resource):
 
     #jwt_required()
     def get(self):
-
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
-        #interest_category_id = content["interest_category_id"] if "interest_category_id" in content else None
+        age_hi =  request.args.get("age_hi", type=int)
+        age_lo = request.args.get("age_lo", type=int)
+        gender = request.args.get("gender", type=str)
         request_id = request.args.get("request_id", type=int)
         objGDBUser = GDBUser()
         loutput = []
 
-        # get all interests by friend circle
-        if objGDBUser.get_category_interest(friend_circle_id, loutput):
-            print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-            data = json.dumps(loutput)
-        else:
-            return {"status": "failure"}, 400
-        loutput1 = []
-        if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
-            print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-            loutput.append(loutput1)
-            data = json.dumps(loutput)
-        else:
-            return {"status": "failure"}, 400
-        return {'categories': data}, 200
+        if request_id == 3:
+            # get all interests by friend circle
+            if objGDBUser.get_category_interest(friend_circle_id, loutput):
+                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
+                data = json.dumps(loutput)
+            else:
+                return {"status": "failure"}, 400
+            loutput1 = []
+            if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
+                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
+                loutput.append(loutput1)
+                if len(loutput1) > 0:
+                    data = json.dumps(loutput)
+            else:
+                return {"status": "failure"}, 400
+            return {'categories': data}, 200
 
         objCategory = CategoryManagementDB()
 
-        if requestid == 1:
+        if request_id == 1:
             if not objCategory.get_web_category(loutput):
                 current_app.logger.error("Unable to get the categories")
                 return {"status" : "Failure"}, 400

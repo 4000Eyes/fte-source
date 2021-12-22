@@ -163,7 +163,8 @@ class FriendListDB:
                     " a.phone_number = $phone_number_ AND" \
                     " a.friend_id = $friend_id_  " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
-                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
+                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location, " \
+                    " a.linked_status as linked_status, a.linked_user_id as linked_user_id "
 
             result = driver.run(query, phone_number_ = phone_number, friend_id_ = referrer_user_id, source_type_ = source_type)
             for record in result:
@@ -174,7 +175,7 @@ class FriendListDB:
                 hshOutput["location"] = record["location"]
                 hshOutput["first_name"] = record["first_name"]
                 hshOutput["last_name"] = record["last_name"]
-                hshOutput["linked_statue"] = record["linked_status"]
+                hshOutput["linked_status"] = record["linked_status"]
                 hshOutput["linked_user_id"] = record["linked_user_id"]
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -545,7 +546,7 @@ class FriendListDB:
             user_exists = 0
 
             if objUser.get_user_by_id(hshuser["referrer_user_id"], referrer_output):
-                if "user_id" in referrer_output:
+                if "user_id" not in referrer_output:
                     txn.rollback()
                     current_app.logger.error("The creator is not in the user table" + hshuser["referrer_user_id"])
                     print ("The creator is not in the user table ", hshuser["referrer_user_id"])
@@ -586,12 +587,10 @@ class FriendListDB:
                     friend_exists = "N"
 
             hshuser["source_type"] = "DIRECT"
-            user_output["referrer_user_id"] = hshuser["referrer_user_id"]
-            user_output["referred_user_id"] = hshuser["referred_user_id"]
             referred_user_id = hshuser["referred_user_id"]
             if friend_exists == "N":
                 #if not self.insert_friend_by_email(hshuser, txn, output_hash): #phone primary key support
-                if not self.insert_friend_by_phone(user_output, txn, output_hash):
+                if not self.insert_friend_by_phone(hshuser, txn, output_hash):
                     txn.rollback()
                     current_app.logger.error("Unable to insert the email address into friend circle " + hshuser["phone_number"])
                     print("Unable to insert the email address into friend circle " + hshuser["phone_number"])
@@ -601,7 +600,7 @@ class FriendListDB:
                     referred_user_id = output_hash[key]["user_id"]
                 hshuser["user_id"] = referred_user_id # Need this for mongo insert
                 objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(user_output):
+                if not objMongo.insert_user(hshuser):
                     txn.rollback()
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
                     return False
@@ -640,7 +639,7 @@ class FriendListDB:
             record_exists = 0
 
             if objUser.get_user_by_id(hshuser["referrer_user_id"], referrer_output):
-                if "user_id" in referrer_output:
+                if "user_id" not in referrer_output:
                     txn.rollback()
                     current_app.logger.error("The creator is not in the user table" + hshuser["referrer_user_id"])
                     print ("The creator is not in the user table ", hshuser["referrer_user_id"])
