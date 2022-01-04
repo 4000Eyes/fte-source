@@ -5,6 +5,7 @@ from app.model.categorydb import CategoryManagementDB
 from flask_restful import Resource
 from app.model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
+from app.service.general import SiteGeneralFunctions
 import json
 
 #are
@@ -284,7 +285,7 @@ class ManageFriendCircle(Resource):
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         request_id = request.args.get("request_id", type=int)
 
-        if "request_id" is None:
+        if request_id is None:
             return {"status": "Failure. No request id present in the request"}, 400
         output = []
         objGDBUser = GDBUser()
@@ -381,8 +382,7 @@ class InterestManagement(Resource):
     def get(self):
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
-        age_hi =  request.args.get("age_hi", type=int)
-        age_lo = request.args.get("age_lo", type=int)
+        age =  request.args.get("age", type=int)
         gender = request.args.get("gender", type=str)
         request_id = request.args.get("request_id", type=int)
         objGDBUser = GDBUser()
@@ -408,13 +408,43 @@ class InterestManagement(Resource):
         objCategory = CategoryManagementDB()
 
         if request_id == 1:
+
             if not objCategory.get_web_category(loutput):
                 current_app.logger.error("Unable to get the categories")
                 return {"status" : "Failure"}, 400
-            return {"category" : json.dumps(loutput)}, 200
+            return {"category": json.dumps(loutput)}, 200
 
         if request_id == 2:
-            if not objGDBUser.get_subcategory_smart_recommendation(friend_circle_id, age_hi, age_lo, gender,
+            hsh = {}
+            objFriend = FriendListDB()
+
+            if age is None or gender is None:
+                if not objGDBUser.get_friend_circle_attributes(friend_circle_id, hsh):
+                    current_app.logger.error("Unable to get friend circle_attributes")
+                    return {"status": "Failure: Unable to get the age and gender from friend circle"}, 400
+                age = hsh["age"]
+                gender = hsh["gender"]
+            else:
+                if not objFriend.update_gender_age(friend_circle_id,gender, age):
+                    current_app.logger.error("Unable to update the friend circle with age or gender")
+                    return {"status": "Failure: Unable to update the friend circle with the given data"}
+            if age is None:
+                if not objGDBUser.get_age_from_occasion(friend_circle_id, hsh):
+                    current_app.logger.error("Error in getting teh age for the secret friend")
+                    return {"status": "Failure:Error in getting the age"}, 400
+                age = hsh["age"]
+                if ("lo" not in hsh   or "hi" not in hsh) or (hsh["lo"] is None or hsh["hi"] is None):
+                    current_app.logger.error("Age hi or lo is missing or invalid")
+                    return {"status":"Failure: Unable to get age range"}, 400
+            if gender is None:
+                current_app.logger.error("gender cannot be none and it is")
+                return {"status" : "Failure: Unable to get the gender"}, 400
+
+            if not SiteGeneralFunctions.get_age_range(age, hsh):
+                current_app.logger.error("Unable to get age range")
+                return {"status": "Failure: Unable to get age range"}, 400
+
+            if not objGDBUser.get_subcategory_smart_recommendation(friend_circle_id, hsh["hi"], hsh["lo"], gender,
                                                                    loutput):
                 current_app.logger.error(
                     "Unable to get smarter recommendation for friend circle id" + friend_circle_id)
@@ -451,7 +481,8 @@ class OccasionManagement(Resource):
         value = content["value"] if "value" in content else None
         value_timezone = content["value_timezone"] if "value_timezone" in content else None
         request_id = content["request_id"] if "request_id" in content else None
-
+        occasion_name = content["occasion_name"] if "occasion_name" in content else None
+        frequency= content["frequency"] if "frequency" in content else None
         objGDBUser = GDBUser()
 
         # add
@@ -476,6 +507,16 @@ class OccasionManagement(Resource):
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500
 
+        if request_id == 4: # create custom occasion. This would require friend circle id, occasion_name, occasion_start_date, frequency,
+            hsh = {}
+            if not objGDBUser.create_custom_occasion(occasion_name, friend_circle_id, frequency, creator_user_id, occasion_date, value_timezone, hsh):
+                return {"status" : "Failure: Unable to create custom occasion"}, 400
+            return {"occasion_id": json.dumps(hsh) }, 200
+
+        if request_id == 5: # deactivate custom occasion. This would require custom_occasion_id, admin_user_id
+            if not objGDBUser.deactivate_occasion(occasion_id, friend_circle_id):
+                return {"status" : "Failure: occasion not deactivated"}, 400
+            return {"status" : "Successfully deactivated"}, 200
 
     @jwt_required()
     def update(self):
@@ -489,7 +530,6 @@ class OccasionManagement(Resource):
         status = content["status"] if "status" in content else None
         occasion_date = content["occasion_date"] if "occasion_date" in content else None
         request_id = content["request_id"] if "request_id" in content else None
-
         objGDBUser = GDBUser()
         if request_id == 1:
             if objGDBUser.update_occasion(user_id, friend_circle_id, occasion_id, occasion_date, status):
@@ -499,10 +539,8 @@ class OccasionManagement(Resource):
 
    #@jwt_required()
     def get(self):
-
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         request_id = request.args.get("request_id", type=int)
-
         objGDBUser = GDBUser()
         loutput1 = []
         loutput2 = []
@@ -518,16 +556,22 @@ class OccasionManagement(Resource):
                 return {"occasions", data}, 200
             else:
                 return {"status:": "Error in getting the occasions. try again"}, 500
+        data = []
+        if request_id == 2: # get age.
+            return {"status": json.dumps(data)}, 200
 
 class FriendAttributes(Resource):
     def post(self):
         content = request.get_json()
         objFriend = FriendListDB()
         request_id = content["request_id"]
-        friend_circle_id = content["friend_circle_id"]
-        user_id = content["user_id"]
-        age = content["age"]
-        relation_type = content["relation_type"]
+        friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
+        user_id = content["user_id"] if "user_id" in content else None
+        age = content["age"] if "age" in content else None
+        relation_type = content["relation_type"] if "relation_type" in content else None
+        image_type = content["image_type"] if "image_type" in content else None
+        image_url = content["image_url"] if "image_url" in content else None
+        entity_id = content["entity_id"] if "entity_id" in content else None
 
         if request is None:
             return {"status" : " Request id is missing"}, 400
@@ -537,8 +581,9 @@ class FriendAttributes(Resource):
         if request_id == 2: # Adding Relationship
             if not objFriend.add_relationship(user_id, friend_circle_id, relation_type):
                 return {"status": "Failure in adding relationship"}, 400
-
-
+        if request_id == 3:
+            if not objFriend.upload_image(image_type, entity_id, image_url):
+                return {"status": "Failure: Unable to load image for " + entity_id}
 
     def get(self):
         request_id = request.args.get("request_id", type=int)
@@ -550,6 +595,4 @@ class FriendAttributes(Resource):
             if objFriend.get_secret_friend_age(friend_circle_id, hshOutput):
                 return {"status" : " Error in getting age for the friend circle"}
             return {"status" : json.dumps(hshOutput)}
-
-
         return {"status" : "success"}, 200
