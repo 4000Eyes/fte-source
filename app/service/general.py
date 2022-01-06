@@ -1,5 +1,6 @@
 
 class SiteGeneralFunctions():
+    @classmethod
     def get_age_range(self, val, rhsh):
         range_list = [[0,5],[6,10,],[11,15], [15,19], [20,30], [31,39], [40,49], [50,60], [60,100]]
         for i in range_list:

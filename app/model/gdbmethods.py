@@ -10,6 +10,9 @@ import pymongo.collection
 from datetime import datetime
 from pymongo import errors
 import collections
+import pytz
+from datetime import datetime, tzinfo, timedelta
+from dateutil.relativedelta import relativedelta
 
 
 # User object
@@ -117,7 +120,7 @@ class GDBUser(Resource):
             print("Inside the gdb user all function")
             query = "MATCH (u:User) " \
                     "WHERE u.phone_number = $phone_number_ " \
-                    "RETURN u.user_id, u.email_address, u.user_type, u.first_name, u.last_name, " \
+                    "RETURN u.user_id, u.email_address, u.user_type, u.first_name, u.last_name, u.image_url, " \
                     "u.phone_number, u.location, u.gender"
 
             results = driver.run(query, phone_number_=phone_number)
@@ -135,6 +138,7 @@ class GDBUser(Resource):
                 output_data["email_address"] = record["u.email_address"]
                 output_data["location"] = record["u.location"]
                 output_data["gender"] = record["u.gender"]
+                output_data["image_url"] = record["u.image_url"]
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("THere is a syntax error", e.message, e.metadata)
@@ -154,6 +158,10 @@ class GDBUser(Resource):
     def get_user_by_email(self, email_address, output_data):
 
         try:
+            output_data["user_id"] = None
+            output_data["email_address"] = None
+            output_data["user_type"] = None
+            output_data["password"] = None
             driver = NeoDB.get_session()
             if driver is None:
                 current_app.logger.info("Driver to the database is not initiated in get_user_by_phone")
@@ -169,7 +177,6 @@ class GDBUser(Resource):
             results = driver.run(query, email_address_=email_address)
             if results is None:
                 print("user does not exist")
-                output_data = None
                 return True
             for record in results:
                 print("The user is", record)
@@ -900,7 +907,6 @@ class GDBUser(Resource):
         driver = NeoDB.get_session()
         result = None
         try:
-
             query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
                     "WHERE  n.user_id = $user_id_  and " \
                     " x.secret_friend_id <> $user_id_ " \
@@ -931,6 +937,36 @@ class GDBUser(Resource):
             print("The  parameters is ", result.consume().parameters)
             return True
         except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            return False
+
+    def get_friend_circle_attributes(self, friend_circle_id, hsh):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (fc:friend_circle) " \
+                    " WHERE fc.friend_circle_id = $friend_circle_id_" \
+                    " RETURN fc.friend_circle_id as friend_circle_id, " \
+                    "fc.age as age, " \
+                    " fc.gender as gender," \
+                    " fc.created_dt as created_dt," \
+                    " fc.creator_id as creator_id, " \
+                    " fc.secret_friend_id as secret_friend_id"
+            result = driver.run(query, friend_circle_id_=friend_circle_id)
+            for record in result:
+                print("The user is ", record["user_exists"])
+                hsh["friend_circle_id"] = record["friend_circle_id"]
+                hsh["gender"] = record["gender"]
+                hsh["age"] = record["age"]
+                hsh["creator_id"] = record["creator_id"]
+                hsh["secret_friend_id"] = record["secret_friend_id"]
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print(e.message)
             current_app.logger.error(e.message)
             return False
         except Exception as e:
@@ -1203,7 +1239,7 @@ class GDBUser(Resource):
 
                 if result is None:
                     print("The combination of user and category does not exist", user_id,
-                          hsh_web_category_id["web_category_id"])
+                          lweb_category_id["web_category_id"])
                     txn.rollback()
                     return False
                 print("The  query is ", result.consume().query)
@@ -1296,7 +1332,8 @@ class GDBUser(Resource):
     def get_category_interest(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebCat) " \
+            query = "MATCH (a:User)-[r:INTEREST]->(b:WebCat) " \
+                    "  WHERE r.friend_circle_id = $friend_circle_id_ " \
                     "RETURN count(a.user_id) as users, " \
                     "sum(r.vote) as votes, " \
                     "b.web_category_id as category_id," \
@@ -1311,10 +1348,57 @@ class GDBUser(Resource):
             print("Error in executing the query", e)
             return False
 
+    def get_category_interest_by_user(self, user_id, hsh_output):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (a:User)-[r:INTEREST]->(b:WebCat) " \
+                    "  WHERE a.user_id = $user_id_ " \
+                    "RETURN r.friend_circle_id as friend_circle_id, " \
+                    "count(b.web_category_id) as interests "
+            result = driver.run(query, user_id_=user_id)
+            for record in result:
+                if record["friend_circle_id"] not in hsh_output:
+                    hsh_output[record["friend_circle_id"]] = collections.defaultdict(dict)
+
+                hsh_output[record["friend_circle_id"]].update({"interests": record["interests"]})
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("Error in executing the query", e)
+            return False
+        except Exception as e:
+            print("Error in executing the query", e)
+            return False
+
+    def get_subcategory_interest_by_user(self, user_id, hsh_output):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (a:User)-[r:INTEREST]->(b:WebSubCat) " \
+                    "  WHERE a.user_id = $user_id_ " \
+                    "RETURN r.friend_circle_id as friend_circle_id, " \
+                    "count(b.web_subcategory_id) as interests "
+            result = driver.run(query, user_id_=user_id)
+            for record in result:
+                if record["friend_circle_id"] not in hsh_output:
+                    hsh_output[record["friend_circle_id"]] = collections.defaultdict(dict)
+
+                hsh_output[record["friend_circle_id"]].update(
+                    {"interests": record["interests"]})
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("Error in executing the query", e)
+            return False
+        except Exception as e:
+            print("Error in executing the query", e)
+            return False
+
     def get_subcategory_interest(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:friend_list)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebSubCat) " \
+            query = "MATCH (a:User)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebSubCat) " \
                     "RETURN count(a.user_id) as users, " \
                     "sum(r.vote) as votes, " \
                     "b.subcategory_id as subcategory_id," \
@@ -1349,7 +1433,7 @@ class GDBUser(Resource):
                     "RETURN distinct b.web_subcategory_id as subcategory_id," \
                     " b.web_subcategory_name as subcategory_name, b.parent_id as parent_id"
             result = driver.run(query, friend_circle_id_=friend_circle_id)
-            if len(result.data()) <= 0 :
+            if len(result.data()) <= 0:
                 if not self.get_subcategory_initial_recommendation(list_web_cat, age_hi, age_lo, gender, loutput):
                     current_app.logger.error(
                         "Unable to get the initial recommendation for friend circle id" + friend_circle_id)
@@ -1414,31 +1498,49 @@ class GDBUser(Resource):
         try:
 
             query = " match (ff:friend_list)-[rr]->(fc:friend_circle) " \
-                    " optional match (ff:friend_list)-[r:INTEREST]->(wc:WebCategory) " \
-                    " optional match (ff:friend_list)-[r:INTEREST]->(wsd:WebSubCategory) " \
                     " call { with ff match (pp:friend_list)<-[]->(fc:friend_circle) " \
                     " where ff.user_id = pp.user_id and " \
                     " pp.user_id <> fc.secret_friend_id and " \
                     " pp.linked_user_id = $user_id_ " \
                     " return fc.friend_circle_id}  " \
                     " return  fc.friend_circle_id as friend_circle_id," \
-                    " fc.friend_circle_name as friend_circle_name, " \
-                    " count(distinct ff.user_id) as total_contributors, " \
-                    " count( wc.web_category_id) as category_count, " \
-                    " count( wc.web_subcategory_id) as subcategory_count "
-
+                    " fc.friend_circle_name as friend_circle_name," \
+                    " fc.image_url as image_url, " \
+                    " count(distinct ff.user_id) as total_contributors"
             if txn is None:
                 txn = NeoDB.get_session()
 
             result = txn.run(query, user_id_=user_id)
+
             for record in result:
-                hshOutput["friend_circle_id"] = record["friend_circle_id"]
-                hshOutput["friend_circle_name"] = record["friend_circle_name"]
-                hshOutput["total_contributors"] = record["total_contributors"]
-                hshOutput["category_count"] = record["category_count"]
-                hshOutput["subcategory_count"] = record["subcategory_count"]
+                hshOutput[record["friend_circle_id"]] = record.data()
+
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
+
+            # get category interest count
+            hsh1 = {}
+
+            if not self.get_category_interest_by_user(user_id, hsh1):
+                current_app.logger.error("Error in getting interest count for " + user_id)
+                return False
+
+            hsh2 = {}
+
+            if not self.get_subcategory_interest_by_user(user_id, hsh2):
+                current_app.logger.error("Error in getting interest count for " + user_id)
+                return False
+
+            for key in hsh1:
+                if key in hsh2:
+                    total_votes = int(hsh1[key]["interests"]) + int(hsh2[key]["interests"])
+                else:
+                    total_votes = int(hsh1[key]["interests"])
+                hshOutput[key].update({"interests": total_votes})
+
+            # for key in hsh1:
+            #     hshOutput[key].update(hsh1[key])
+
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the query", e)
@@ -1461,7 +1563,7 @@ class GDBUser(Resource):
             print("Inside the add occasion function")
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
-            select_occasion = " MATCH (a:friend_list)-[r:OCCASION]" \
+            select_occasion = " MATCH (a:User)-[r:OCCASION]" \
                               "->(f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})" \
                               "<-[x:IS_MAPPED]-(b:occasion{occasion_id:$occasion_id_}) " \
                               " WHERE (a.user_id = $user_id_ or a.linked_user_id = $user_id_)" \
@@ -1475,7 +1577,7 @@ class GDBUser(Resource):
                     query = " CREATE (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_, " \
                             "occasion_date:$occasion_date_, occasion_timezone:$occasion_timezone, created_dt:$created_dt_, friend_occasion_status:$friend_occasion_status_}) " \
                             " WITH f " \
-                            " MATCH(a:friend_list WHERE (a.user_id = $user_id_ or a.linked_user_id = $user_id_)), " \
+                            " MATCH(a:User WHERE (a.user_id = $user_id_)), " \
                             " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
                             " (b:occasion{occasion_id:$occasion_id_}) " \
                             " MERGE (a)-[:OCCASION]->(f)<-[:IS_MAPPED]-(b) " \
@@ -1484,7 +1586,6 @@ class GDBUser(Resource):
                     query_result = txn.run(query, created_dt_=self.get_datetime(),
                                            friend_circle_id_=friend_circle_id,
                                            user_id_=user_id,
-                                           friend_id_=friend_id,
                                            occasion_id_=occasion_id,
                                            occasion_date_=occasion_date,
                                            occasion_timezone=occasion_timezone,
@@ -1515,6 +1616,80 @@ class GDBUser(Resource):
         except neo4j.exceptions.Neo4jError as e:
             print("The error is ", e.message)
             txn.rollback()
+            return False
+
+    def create_custom_occasion(self, custom_occasion_name: str, friend_circle_id, frequency, creator_user_id, occasion_date, occasion_timezone, hsh):
+        try:
+            driver = NeoDB.get_session()
+            txn = driver.begin_transaction()
+            status = 1
+            check_occasion_query = "match (b:occasion{occasion_name:$occasion_name_, " \
+                                   "friend_circle_id:$friend_circle_id_}) return b.occasion_id as occasion_id"
+
+            check_result = txn.run(check_occasion_query,
+                                   occasion_name_ = custom_occasion_name.lower(),
+                                   friend_circle_id_ = friend_circle_id)
+            if check_result is None:
+                occasion_id = uuid.uuid4()
+                query = "CREATE (o:occasion{occasion_id:$occasion_id_, " \
+                        "occasion_name:$occasion_name, " \
+                        "occasion_frequency: $occasion_frequency_," \
+                        "created_dt:$created_dt_," \
+                        "status:$status_) "
+
+                result = txn.run(query,
+                                occasion_id_ = occasion_id,
+                                 friend_circle_id_=friend_circle_id,
+                                 status_=status,
+                                 occasion_name_ = custom_occasion_name,
+                                 created_dt_=self.get_datetime())
+            else:
+                for record in check_result:
+                    occasion_id = record["occasion_id"]
+            if result is not None:
+                insert_occasion_query = "CREATE (b:friend_occasion{occasion_id:$occasion_id_, " \
+                                        "created_dt:$created_dt_" \
+                                        "occasion_frequency:$occasion_frequency," \
+                                        "occasion_date:$occasion_date_," \
+                                        "occasion_timezone:$occasion_timezone_}) return b.occasion_id as occasion_id"
+                insert_result = txn.run(insert_occasion_query, occasion_id_ =occasion_id,
+                                        created_dt_ = self.get_datetime(), occasion_frequency_ = frequency ,
+                                        occasion_timezone_ = occasion_timezone, occasion_date_ = occasion_date)
+                if insert_result is not None:
+                    for record in insert_result:
+                        hsh["occasion_id"] = record["occasion_id"]
+                    return True
+
+        except neo4j.exceptions.Neo4jError as e:
+            txn.rollback()
+            current_app.logger.error(e.message)
+            print(e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print(e)
+            return False
+
+    def deactivate_occasion(self, occasion_id, friend_circle_id=None):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (o:occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
+                    "SET status = 0" \
+                    " return o.occasion_id"
+            result = driver.run(query, occasion_id_ = occasion_id, friend_circle_id_ = friend_circle_id)
+            if result is not None:
+                for record in result:
+                    return True
+            else:
+                return False
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print(e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print(e)
             return False
 
     def approve_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, status, output_hash):
@@ -1563,10 +1738,10 @@ class GDBUser(Resource):
     def get_occasion(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:friend_list)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
+            query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
                     " WHERE " \
                     " f.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN a.user_id as user_id, a.friend_id as creator_user_id, f.occasion_date as occasion_date , " \
+                    " RETURN a.user_id as user_id, f.occasion_date as occasion_date , " \
                     "f.occasion_id as occasion_id, b.occasion_name as occasion_name"
             result = driver.run(query,
                                 friend_circle_id_=friend_circle_id)
@@ -1582,11 +1757,51 @@ class GDBUser(Resource):
             print(e.message)
             return False
 
+    def get_age_from_occasion(self, friend_circle_id, hsh):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
+                    " WHERE " \
+                    " f.friend_circle_id = $friend_circle_id_  and " \
+                    " b.occasion_id = 1" \
+                    " RETURN a.user_id as user_id, a.friend_id as creator_user_id," \
+                    " f.occasion_date as occasion_date , " \
+                    "f.occasion_id as occasion_id, b.occasion_name as occasion_name"
+            result = driver.run(query,
+                                friend_circle_id_=friend_circle_id)
+            if result is None:
+                hsh = None
+                return True
+            for record in result:
+                if record["occasion_date"] is not None:
+                    if not self.convert_occasion_date_to_number(record["occasion_date"], hsh):
+                        return False
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print(e.message)
+            return False
+
+    def convert_occasion_date_to_number(self, occasion_date, hsh_output):
+        try:
+            # occasion_date should be in dd-mm-yyyy
+            utc_now_dt = datetime.now(tz=pytz.UTC)
+            formatted_datetime = utc_now_dt.strftime("%d-%m-%Y %H-%M-%S")
+            current_date_time = datetime.strptime(formatted_datetime, "%d-%m-%Y %H-%M-%S")
+            first_reminder_date = datetime.strptime(occasion_date, "%d-%m-%Y %H-%M-%S")
+            diff = relativedelta(current_date_time.date(), first_reminder_date.date())
+            hsh_output["age"] = diff.years
+        except Exception as e:
+            current_app.logger.error("There is an issue in converting date " + e)
+            return None
+
     def vote_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, flag, value, value_timezone,
                       output_hash):
         try:
             driver = NeoDB.get_session()
-            query = " MATCH (a:friend_list{user_id:$user_id_, friend_id:$friend_id_}), " \
+            query = " MATCH (a:User{user_id:$user_id_}), " \
                     "(b:friend_occasion{friend_circle_id:$friend_circle_id_,  occasion_id :$occasion_id_})" \
                     " MERGE (a)-[r:VOTE_OCCASION]->(b) " \
                     " ON MATCH set r.status= $status_, r.updated_dt= $updated_dt_, " \
@@ -1621,9 +1836,9 @@ class GDBUser(Resource):
     def get_occasion_votes(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:friend_list)-[r:VOTE_OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
+            query = "MATCH (a:User)-[r:VOTE_OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
                     " WHERE f.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN a.user_id as user_id, a.friend_id as friend_id, r.status as status, r.value as value, b.occasion_id as occasion_id "
+                    " RETURN a.user_id as user_id,  r.status as status, r.value as value, b.occasion_id as occasion_id "
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             if result is None:
                 current_app.logger.error("Houston we have a problem. No votes")
