@@ -912,21 +912,25 @@ class GDBUser(Resource):
                     " x.secret_friend_id <> $user_id_ " \
                     " RETURN  n.user_id as user_id, n.first_name as first_name, " \
                     " n.last_name as last_name, n.gender as gender, " \
-                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name" \
+                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
+                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name" \
                     " UNION " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ ) AND " \
                     " x.secret_friend_id <> $user_id_ " \
                     " RETURN  m.user_id as user_id, m.first_name as first_name, " \
                     " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name" \
+                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
+                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ )  AND " \
                     " x.secret_friend_id <> $user_id_ " \
                     " RETURN  m.user_id as user_id, m.first_name as first_name, " \
                     " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name"
+                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name, " \
+                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name" \
+                    " ORDER BY x.friend_circle_id, m.user_id"
 
             result = driver.run(query, user_id_=user_id)
             counter = 0
@@ -1619,53 +1623,86 @@ class GDBUser(Resource):
             return False
 
     def create_custom_occasion(self, custom_occasion_name: str, friend_circle_id, frequency, creator_user_id, occasion_date, occasion_timezone, hsh):
+
         try:
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
             status = 1
+            occasion_id = None
             check_occasion_query = "match (b:occasion{occasion_name:$occasion_name_, " \
                                    "friend_circle_id:$friend_circle_id_}) return b.occasion_id as occasion_id"
 
             check_result = txn.run(check_occasion_query,
                                    occasion_name_ = custom_occasion_name.lower(),
                                    friend_circle_id_ = friend_circle_id)
-            if check_result is None:
-                occasion_id = uuid.uuid4()
+            record = check_result.single()
+            info = check_result.consume().counters.nodes_created
+            if info <= 0 and check_result is not None:
+                occasion_id = str(uuid.uuid4())
                 query = "CREATE (o:occasion{occasion_id:$occasion_id_, " \
-                        "occasion_name:$occasion_name, " \
+                        "occasion_name:$occasion_name_, " \
                         "occasion_frequency: $occasion_frequency_," \
                         "created_dt:$created_dt_," \
-                        "status:$status_) "
+                        "status_id:$status_," \
+                        "friend_circle_id: $friend_circle_id_}) return o.occasion_id as occasion_id"
 
                 result = txn.run(query,
                                 occasion_id_ = occasion_id,
                                  friend_circle_id_=friend_circle_id,
                                  status_=status,
+                                 occasion_frequency_ = frequency,
                                  occasion_name_ = custom_occasion_name,
                                  created_dt_=self.get_datetime())
-            else:
-                for record in check_result:
-                    occasion_id = record["occasion_id"]
-            if result is not None:
-                insert_occasion_query = "CREATE (b:friend_occasion{occasion_id:$occasion_id_, " \
-                                        "created_dt:$created_dt_" \
-                                        "occasion_frequency:$occasion_frequency," \
-                                        "occasion_date:$occasion_date_," \
-                                        "occasion_timezone:$occasion_timezone_}) return b.occasion_id as occasion_id"
-                insert_result = txn.run(insert_occasion_query, occasion_id_ =occasion_id,
-                                        created_dt_ = self.get_datetime(), occasion_frequency_ = frequency ,
-                                        occasion_timezone_ = occasion_timezone, occasion_date_ = occasion_date)
-                if insert_result is not None:
-                    for record in insert_result:
+                if result is not None:
+                    for record in result:
                         hsh["occasion_id"] = record["occasion_id"]
-                    return True
+                else:
+                    current_app.logger.error("Occasion not inserted")
+                    txn.rollback()
+                    return False
 
+            else:
+                occasion_id = record["occasion_id"]
+
+            insert_occasion_query = "CREATE (b:friend_occasion{occasion_id:$occasion_id_, " \
+                                    "created_dt:$created_dt_," \
+                                    "occasion_frequency:$occasion_frequency_," \
+                                    "occasion_date:$occasion_date_," \
+                                    "occasion_timezone:$occasion_timezone_," \
+                                    "friend_circle_id:$friend_circle_id_}) return b.occasion_id as occasion_id"
+            insert_result = txn.run(insert_occasion_query, occasion_id_ =occasion_id,
+                                    created_dt_ = self.get_datetime(), occasion_frequency_ = frequency ,
+                                    occasion_timezone_ = occasion_timezone, occasion_date_ = occasion_date,
+                                    friend_circle_id_ = friend_circle_id)
+            if insert_result is not None:
+                for record in insert_result:
+                    hsh["occasion_id"] = record["occasion_id"]
+            else:
+                txn.rollback()
+                current_app.logger.error("Something did not go right. Occasion insertion didnt work")
+                return False
+
+            create_mapping_query = "CREATE (u:User{user_id:$user_id_})-[r:OCCASION]->" \
+                                   "(fo:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})" \
+                                   "<-[:IS_MAPPED]-(b:occasion{occasion_id:$occasion_id_}) return o.occasion_name  as occasion_name "
+            map_result = txn.run(create_mapping_query, user_id_ = creator_user_id, occasion_id_ = occasion_id, friend_circle_id_ = friend_circle_id)
+            if map_result is not None:
+                for record in map_result:
+                    hsh["occasion_name"] = record["occasion_name"]
+            else:
+                txn.rollback()
+                current_app.logger.error("Something did not go right in creating the relationship")
+                return False
+
+            txn.commit()
+            return True
         except neo4j.exceptions.Neo4jError as e:
             txn.rollback()
             current_app.logger.error(e.message)
             print(e.message)
             return False
         except Exception as e:
+            txn.rollback()
             current_app.logger.error(e)
             print(e)
             return False
@@ -1674,7 +1711,7 @@ class GDBUser(Resource):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (o:occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
-                    "SET status = 0" \
+                    " SET o.status_id = 0" \
                     " return o.occasion_id"
             result = driver.run(query, occasion_id_ = occasion_id, friend_circle_id_ = friend_circle_id)
             if result is not None:
@@ -1740,7 +1777,8 @@ class GDBUser(Resource):
             driver = NeoDB.get_session()
             query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
                     " WHERE " \
-                    " f.friend_circle_id = $friend_circle_id_ " \
+                    " f.friend_circle_id = $friend_circle_id_ and " \
+                    " b.status_id = 1 " \
                     " RETURN a.user_id as user_id, f.occasion_date as occasion_date , " \
                     "f.occasion_id as occasion_id, b.occasion_name as occasion_name"
             result = driver.run(query,
@@ -1751,6 +1789,51 @@ class GDBUser(Resource):
                 loutput.append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print(e.message)
+            return False
+
+    def get_occasion_names(self, list_output, friend_circle_id = None):
+        try:
+            driver = NeoDB.get_session()
+            if friend_circle_id is None:
+                query = "MATCH (b:occasion) " \
+                        " WHERE " \
+                        " b.friend_circle_id is null " \
+                        " b.status_id = 1 " \
+                        " RETURN  " \
+                        "b.occasion_id as occasion_id, b.occasion_name as occasion_name"
+                result = driver.run(query)
+            else:
+                query = "MATCH (b:occasion) " \
+                        " WHERE " \
+                        " b.friend_circle_id is null and " \
+                        " b.status_id = 1 " \
+                        " RETURN  " \
+                        "b.occasion_id as occasion_id, b.occasion_name as occasion_name, " \
+                        "'None' as friend_circle_id, 0 as occasion_frequency" \
+                        " UNION " \
+                        "MATCH (b:occasion) " \
+                        " WHERE " \
+                        " b.friend_circle_id = $friend_circle_id_ and " \
+                        " b.status_id = 1 " \
+                        " RETURN " \
+                        "b.occasion_id as occasion_id, b.occasion_name as occasion_name, " \
+                        "b.friend_circle_id as friend_circle_id, b.occasion_frequency as occasion_frequency"
+
+                result = driver.run(query,
+                                friend_circle_id_=friend_circle_id)
+            for record in result:
+                list_output.append(record.data())
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            if len(list_output) > 0:
+                return True
+            else:
+                return False
+
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)

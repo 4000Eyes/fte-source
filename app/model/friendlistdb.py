@@ -1054,3 +1054,63 @@ class FriendListDB:
             current_app.logger.error(e)
             print("Error in adding contributors", e)
             return False
+
+    def contributor_approval(self, friend_circle_id, phone_number):
+        try:
+            # Here the assumption is the user cannot set relationship unless registered w
+            driver = NeoDB.get_session()
+
+            query = "MATCH (fl:friend_list)<-[:CONTRIBUTOR]-(fc:friend_circle) " \
+                    " SET approval_status = 1, " \
+                    " updated_dt = $updated_dt_" \
+                    " WHERE fl.phone_number = $phone_number_ and " \
+                    " fc.friend_circle_id = $friend_circle_id_ " \
+                    " RETURN fc.friend_circle_id as friend_circle_id, " \
+                    " fl.linked_user_id as linked_user_id"
+
+            result = driver.run(query, friend_circle_id_ = friend_circle_id,
+                                phone_number_ = phone_number,
+                                updated_dt_ = self.get_datetime())
+
+            for record in result:
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                return True
+            return False
+        except neo4j.exceptions.Neo4jError as e:
+            print("THere is a syntax error", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("Error in adding contributors", e)
+            return False
+
+        def get_open_invites(self,  phone_number,list_output):
+            try:
+                # Here the assumption is the user cannot set relationship unless registered w
+                driver = NeoDB.get_session()
+                query = "MATCH (fl:friend_list)<-[:CONTRIBUTOR]-(fc:friend_circle) " \
+                        " WHERE fl.phone_number = $phone_number_ and " \
+                        " fl.approval_status = 0 " \
+                        " RETURN fc.friend_circle_id as friend_circle_id, " \
+                        " fl.linked_user_id as linked_user_id, " \
+                        " fc.friend_circle_name as friend_circle_name, " \
+                        " fc.secret_first_name as secret_first_name ," \
+                        " fc.secret_last_name as secret_last_name, " \
+                        " fc.secret_friend_id as secret_friend_id"
+
+                result = driver.run(query,
+                                    phone_number_=phone_number)
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+                for record in result:
+                    list_output.append(record.data())
+                    return True
+                return False
+            except neo4j.exceptions.Neo4jError as e:
+                print("THere is a syntax error", e.message)
+                return False
+            except Exception as e:
+                current_app.logger.error(e)
+                print("Error in adding contributors", e)
+                return False
