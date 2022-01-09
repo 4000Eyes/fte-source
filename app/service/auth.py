@@ -32,6 +32,7 @@ class SignupApi(Resource):
             user_hash["last_name"] = body["last_name"]
             user_hash["location"] = body["location"]
             user_hash["mongo_indexed"] = "N"
+            user_hash["image_url"] = body["image_url"] if "image_url" in body else None
 
             if user_hash.get("email_address") is None or user_hash.get("user_type") is None or user_hash.get("password") is None or user_hash.get("phone_number") is None or user_hash.get("gender") is None or user_hash.get("first_name") is None or user_hash.get("last_name") is None:
                 current_app.logger.error("Missing one or many inputs including email, phone, password, gender, first_name, last_name, user_type")
@@ -97,6 +98,7 @@ class PhoneSignUpAPI(Resource):
             user_hash["last_name"] = body["last_name"]
             user_hash["location"] = body["location"]
             user_hash["mongo_indexed"] = "N"
+            user_hash["image_url"] = body["image_url"] if "image_url" in body else None
 
             if user_hash.get("phone_number") is None or user_hash.get("user_type") is None or user_hash.get(
                     "password") is None or user_hash.get("phone_number") is None or user_hash.get(

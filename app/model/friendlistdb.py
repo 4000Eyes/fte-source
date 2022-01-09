@@ -99,7 +99,7 @@ class FriendListDB:
                     " a.friend_id = $friend_id_ " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
                     "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location," \
-                    "a.linked_status as linked_status, a.linked_user_id as linked_user_id "
+                    "a.linked_status as linked_status, a.linked_user_id as linked_user_id, a.approval_status as approval_status"
 
             result = driver.run(query, user_id_=user_id, friend_id_=referrer_user_id)
 
@@ -113,6 +113,7 @@ class FriendListDB:
                 hshOutput["last_name"] = record["last_name"]
                 hshOutput["linked_status"] = record["linked_status"]
                 hshOutput["linked_user_id"] = record["linked_user_id"]
+                hshOutput["approval_status"] = record["approval_status"]
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
@@ -295,7 +296,8 @@ class FriendListDB:
                     "a.linked_user_id=$linked_user_id_," \
                     " a.source_type = $source_type_," \
                     " a.location = $location_," \
-                    " a.first_name=$first_name_, a.last_name=$last_name_" \
+                    " a.first_name=$first_name_, a.last_name=$last_name_," \
+                    " a.approval_status = $approval_status_ " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location "
 
             if "referred_user_id" not in hshuser or hshuser["referred_user_id"] is None:
@@ -317,7 +319,8 @@ class FriendListDB:
                              linked_status_=hshuser["linked_status"],
                              linked_user_id_=hshuser["linked_user_id"],
                              source_type_=hshuser["source_type"],
-                             location_=hshuser["location"]
+                             location_=hshuser["location"],
+                             approval_status=hshuser["approval_status"]
                              )
             if result is None:
                 loutput = None
@@ -420,7 +423,8 @@ class FriendListDB:
                     "a.linked_user_id=$linked_user_id_," \
                     " a.source_type = $source_type_," \
                     " a.location = $location_," \
-                    " a.first_name=$first_name_, a.last_name=$last_name_" \
+                    " a.first_name=$first_name_, a.last_name=$last_name_," \
+                    " a.approval_status = $approval_status_ " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
 
             if "referred_user_id" not in hshuser or hshuser["referred_user_id"] is None:
@@ -444,7 +448,8 @@ class FriendListDB:
                              linked_status_=hshuser["linked_status"],
                              linked_user_id_=hshuser["linked_user_id"],
                              source_type_=hshuser["source_type"],
-                             location_=hshuser["location"]
+                             location_=hshuser["location"],
+                             approval_status = hshuser["approval_status"]
                              )
             if result is None:
                 loutput = None
@@ -1055,13 +1060,13 @@ class FriendListDB:
             print("Error in adding contributors", e)
             return False
 
-    def contributor_approval(self, friend_circle_id, phone_number):
+    def contributor_approval(self, friend_circle_id, phone_number, approval_status):
         try:
             # Here the assumption is the user cannot set relationship unless registered w
             driver = NeoDB.get_session()
 
             query = "MATCH (fl:friend_list)<-[:CONTRIBUTOR]-(fc:friend_circle) " \
-                    " SET approval_status = 1, " \
+                    " SET approval_status = $approval_status_, " \
                     " updated_dt = $updated_dt_" \
                     " WHERE fl.phone_number = $phone_number_ and " \
                     " fc.friend_circle_id = $friend_circle_id_ " \
@@ -1070,6 +1075,7 @@ class FriendListDB:
 
             result = driver.run(query, friend_circle_id_ = friend_circle_id,
                                 phone_number_ = phone_number,
+                                approval_status_ = approval_status,
                                 updated_dt_ = self.get_datetime())
 
             for record in result:
