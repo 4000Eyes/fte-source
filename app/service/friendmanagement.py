@@ -266,6 +266,16 @@ class ManageFriendCircle(Resource):
                     return {"status": "Failure"}, 400
 
                 return {"status": "success"}, 200
+            if request_id == 7: # contributor accepting to join the friend circle
+                if user_info["friend_circle_id"] is None or user_info["phone_number"] is None:
+                    current_app.logger.error("The required parameters for this requests are missing")
+                    return {"status" : "Failure: Unable to complete the operation"},400
+                if not objFriend.contributor_approval(user_info["friend_circle_id"], user_info["phone_number"]):
+                    current_app.logger.error("Unable to process the approval request")
+                    return {"status" : "Failure: Unable to complete the operation"}, 400
+                return {"status" : "Success"}, 200
+
+
             if request_id == 100: # purely for testing purposes
                 output.clear()
                 print ("Inside request 5")
@@ -284,7 +294,7 @@ class ManageFriendCircle(Resource):
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         request_id = request.args.get("request_id", type=int)
-
+        phone_number = request.args.get("phone_number", type=str)
         if request_id is None:
             return {"status": "Failure. No request id present in the request"}, 400
         output = []
@@ -316,6 +326,14 @@ class ManageFriendCircle(Resource):
                 return {"Erros": "unable to get friend circle information. retry"}, 500
             data = json.dumps(output)
             return {'friend_list: data'}, 200
+
+        if request_id == 4: # to get all the friend circle invite where the user hasn't approved
+            objFriend = FriendListDB()
+            list_output = []
+            if objFriend.get_open_invites(phone_number, list_output):
+                current_app.logger.error("Unable to get all the open invites")
+                return {"status" : "Failure to get all the open invites"}, 400
+            return{"invite" : json.dumps(list_output)}, 200
 
     def delete(self):
         return {"Item successfully deleted": "thank you"}, 200
@@ -483,6 +501,7 @@ class OccasionManagement(Resource):
         request_id = content["request_id"] if "request_id" in content else None
         occasion_name = content["occasion_name"] if "occasion_name" in content else None
         frequency= content["frequency"] if "frequency" in content else None
+        creator_user_id = content["creator_user_id"] if "creator_user_id" in content else None
         objGDBUser = GDBUser()
 
         # add
@@ -509,11 +528,15 @@ class OccasionManagement(Resource):
 
         if request_id == 4: # create custom occasion. This would require friend circle id, occasion_name, occasion_start_date, frequency,
             hsh = {}
+            if occasion_name is None or friend_circle_id is None or frequency is None or creator_user_id is None or occasion_date is None or value_timezone is None:
+                return {"status" :"Failure: Insufficient parameters"}
             if not objGDBUser.create_custom_occasion(occasion_name, friend_circle_id, frequency, creator_user_id, occasion_date, value_timezone, hsh):
                 return {"status" : "Failure: Unable to create custom occasion"}, 400
             return {"occasion_id": json.dumps(hsh) }, 200
 
         if request_id == 5: # deactivate custom occasion. This would require custom_occasion_id, admin_user_id
+            if occasion_id is None or friend_circle_id is None:
+                return {"status" : "Failure: Missing parameters"}
             if not objGDBUser.deactivate_occasion(occasion_id, friend_circle_id):
                 return {"status" : "Failure: occasion not deactivated"}, 400
             return {"status" : "Successfully deactivated"}, 200
@@ -556,9 +579,13 @@ class OccasionManagement(Resource):
                 return {"occasions", data}, 200
             else:
                 return {"status:": "Error in getting the occasions. try again"}, 500
-        data = []
-        if request_id == 2: # get age.
-            return {"status": json.dumps(data)}, 200
+
+        if request_id == 3:
+            list_output = []
+            if not objGDBUser.get_occasion_names(list_output, friend_circle_id):
+                current_app.logger.error("Unable to get occasion names")
+                return {"status" : "Failure is extracting all the occasion names"}, 400
+            return {"occasion_name" : json.dumps(list_output)}, 200
 
 class FriendAttributes(Resource):
     def post(self):

@@ -1,6 +1,4 @@
-import json
 import os
-
 import neo4j.exceptions
 import logging
 from flask import current_app, g
@@ -18,9 +16,9 @@ class NotificationAndRecommendationDB(Resource):
         try:
             notification_collection = pymongo.collection.Collection(g.db, "birthday_reminder")
             result = notification_collection.find({"$or": [{"creator_user_id": user_id},
-                                                            {"secret_linked_user_id": user_id},
-                                                            {"secret_user_id": user_id}]},
-                                                   {"status": 0})
+                                                           {"secret_linked_user_id": user_id},
+                                                           {"secret_user_id": user_id}]},
+                                                  {"status": 0})
 
             if result is not None:
                 for row in result:
@@ -32,6 +30,35 @@ class NotificationAndRecommendationDB(Resource):
         except Exception as e:
             current_app.logger.error("The exception is" + str(e))
             list_output = None
+            return False
+
+    def get_no_interest_users(self, user_id, l_friend_circle, list_output: list):
+        try:
+            obj_gdb = GDBUser()
+            driver = NeoDB.get_session()
+
+            query = " match(fc: friend_circle ) " \
+                    " WHERE fc.friend_circle_id in $l_friend_circle_id_" \
+                    " call " \
+                    "{  with fc optional match (a:User)-[r:INTEREST]-() " \
+                    " where " \
+                    " a.user_id = $user_id_ and fc.friend_circle_id = r.friend_circle_id " \
+                    "return a.user_id as user_id, r.friend_circle_id as fs, count(r.friend_circle_id) as " \
+                    "interest_count " \
+                    "}" \
+                    " return fc.friend_circle_id as friend_circle_id, user_id, interest_count, 0 as flag, " \
+                    " duration.inDays(date(datetime({epochmillis: apoc.date.parse(fc.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')})), date()).days as days_since "
+
+            result = driver.run(query, user_id_=user_id, l_friend_circle_id_=l_friend_circle)
+
+            for record in result:
+                list_output.append(record.data())
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error("The error is " + str(e))
+            return False
+        except Exception as e:
+            current_app.logger.error("The error is " + str(e))
             return False
 
     def get_relationship_status(self, user_id, l_friend_circle, list_output):
@@ -46,10 +73,14 @@ class NotificationAndRecommendationDB(Resource):
                     " n.secret_friend_id as secret_friend_id," \
                     " n.secret_first_name as secret_first_name," \
                     " n.secret_last_name as secret_last_name, " \
-                    "  x.user_id as user_id "
-            result = driver.run(query,  user_id_ = user_id , l_friend_circle_ = l_friend_circle)
+                    "  x.user_id as user_id, " \
+                    " duration.inDays(date(datetime({epochmillis: apoc.date.parse(n.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')})), date()).days as days_since," \
+                    " 0 as flag "
+            result = driver.run(query, user_id_=user_id, l_friend_circle_=l_friend_circle)
+
             for record in result:
                 list_output.append(record.data())
+
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("The error is " + e)
@@ -69,23 +100,28 @@ class NotificationAndRecommendationDB(Resource):
                     " AND u.user_id = $user_id_" \
                     " AND fc.friend_circle_id in $l_friend_circle_" \
                     " return " \
-                    " max(date(datetime({epochmillis: apoc.date.parse(r.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')}))) as xdate," \
+                    " duration.inDays(date(datetime({epochmillis: apoc.date.parse(r.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')})), date()).days as days_since, " \
                     " u.user_id as user_id, " \
                     " u.first_name as first_name ," \
                     " u.last_name as last_name," \
-                    " r.friend_circle_id as fci," \
+                    " r.friend_circle_id as friend_circle_id," \
                     " fc.secret_first_name as secret_first_name, " \
                     " fc.secret_last_name as secret_last_name, " \
-                    " fc.secret_friend_id as secret_friend_id "
-            result = driver.run(query, interest_reminder_days_ = interest_reminder_days, user_id_ = user_id , l_friend_circle_ = l_friend_circle)
+                    " fc.secret_friend_id as secret_friend_id ," \
+                    " 1 as flag"
+
+            # " max(date(datetime({epochmillis: apoc.date.parse(r.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')}))) as xdate," \
+
+            result = driver.run(query, interest_reminder_days_=int(interest_reminder_days), user_id_=user_id,
+                                l_friend_circle_=l_friend_circle)
             for record in result:
                 list_output.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
-            current_app.logger.error("The error is " + e)
+            current_app.logger.error("The error is " + str(e))
             return False
         except Exception as e:
-            current_app.logger.error("The error is " + e)
+            current_app.logger.error("The error is " + str(e))
             return False
 
     def new_user_recommendation(self):
