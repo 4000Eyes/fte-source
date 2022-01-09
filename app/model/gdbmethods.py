@@ -240,7 +240,7 @@ class GDBUser(Resource):
             query = "CREATE (u:User) " \
                     " SET u.email_address = $email_address_, u.password = $password_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
                     " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_, u.location = $location_," \
-                    " u.mongo_indexed = $mongo_indexed_" \
+                    " u.mongo_indexed = $mongo_indexed_, u.image_url = $image_url_" \
                     " RETURN u.email_address, u.user_id"
 
             result = txn.run(query, email_address_=str(user_hash.get('email_address')),
@@ -254,7 +254,8 @@ class GDBUser(Resource):
                              location_=user_hash.get("location"),
                              external_referrer_id=user_hash.get("external_referrer_id"),
                              external_referrer_param=user_hash.get("external_referrer_param"),
-                             mongo_indexed_=user_hash.get("mongo_indexed"))
+                             mongo_indexed_=user_hash.get("mongo_indexed"),
+                             image_url_ = user_hash.get("image_url"))
             record = result.single()
             info = result.consume().counters.nodes_created
             if info > 0 and record is not None:
@@ -342,7 +343,7 @@ class GDBUser(Resource):
             query = "CREATE (u:User) " \
                     " SET u.email_address = $email_address_, u.password = $password_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
                     " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_, u.location = $location_," \
-                    " u.mongo_indexed = $mongo_indexed_" \
+                    " u.mongo_indexed = $mongo_indexed_, u.image_url = $image_url_" \
                     " RETURN u.phone_number, u.user_id"
 
             result = txn.run(query, email_address_=str(user_hash.get('email_address')),
@@ -356,7 +357,8 @@ class GDBUser(Resource):
                              location_=user_hash.get("location"),
                              external_referrer_id=user_hash.get("external_referrer_id"),
                              external_referrer_param=user_hash.get("external_referrer_param"),
-                             mongo_indexed_=user_hash.get("mongo_indexed"))
+                             mongo_indexed_=user_hash.get("mongo_indexed"),
+                             image_url_ = user_hash.get("image_url"))
             record = result.single()
             info = result.consume().counters.nodes_created
             if info > 0 and record is not None:
@@ -876,19 +878,19 @@ class GDBUser(Resource):
                     "WHERE x.friend_circle_id = $friend_circle_id_ " \
                     " RETURN  n.user_id as user_id, n.first_name as first_name, " \
                     " n.last_name as last_name, n.gender as gender, " \
-                    " type(rr) as relationship " \
+                    " type(rr) as relationship, x.image_url as image_url " \
                     " UNION " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ " \
                     " RETURN  m.user_id as user_id, m.first_name as first_name, " \
                     " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship" \
+                    " type(rr) as relationship , x.image_url as image_url" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_" \
                     " RETURN  m.user_id as user_id, m.first_name as first_name, " \
                     " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship"
+                    " type(rr) as relationship, x.image_url as image_url"
 
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
@@ -913,7 +915,7 @@ class GDBUser(Resource):
                     " RETURN  n.user_id as user_id, n.first_name as first_name, " \
                     " n.last_name as last_name, n.gender as gender, " \
                     " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
-                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name" \
+                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
                     " UNION " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ ) AND " \
@@ -921,7 +923,7 @@ class GDBUser(Resource):
                     " RETURN  m.user_id as user_id, m.first_name as first_name, " \
                     " m.last_name as last_name, m.gender as gender, " \
                     " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
-                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name" \
+                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ )  AND " \
@@ -929,7 +931,7 @@ class GDBUser(Resource):
                     " RETURN  m.user_id as user_id, m.first_name as first_name, " \
                     " m.last_name as last_name, m.gender as gender, " \
                     " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name, " \
-                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name" \
+                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
                     " ORDER BY x.friend_circle_id, m.user_id"
 
             result = driver.run(query, user_id_=user_id)
@@ -1489,6 +1491,30 @@ class GDBUser(Resource):
                     " RETURN a.web_subcategory_id as web_subcategory_id, a.web_subcategory_name as web_subcategory_name"
             result = driver.run(query, web_category_id_=lweb_subcategory_id, age_lo_=age_lo, age_hi_=age_hi,
                                 gender_=gender)
+            for record in result:
+                loutput.append(record.data())
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("The error message is ", e.message)
+            return False
+
+    def get_recently_added_interest(self, friend_circle_id, list_output):
+        try:
+            driver = NeoDB.get_session()
+
+            query = "MATCH (a:User)-[r:INTEREST]->(w:WebCat) " \
+                    " WHERE r.friend_circle_id = $friend_circle_id_ " \
+                    " RETURN max(coalesce( r.updated_dt, r.created_dt)) as xdate, u.first_name as first_name," \
+                    " u.last_name as last_name, u.image_url" \
+                    " UNION " \
+                    " MATCH (a:User)-[r:INTEREST]->(w:WebSubCat) " \
+                    " WHERE r.friend_circle_id = $friend_circle_id_ " \
+                    " RETURN max(coalesce( r.updated_dt, r.created_dt)) as xdate, u.first_name as first_name," \
+                    " u.last_name as last_name, u.image_url "
+
+            result = driver.run(query, friend_circle_id_ = friend_circle_id)
             for record in result:
                 loutput.append(record.data())
             print("The  query is ", result.consume().query)

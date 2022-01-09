@@ -50,6 +50,8 @@ class ManageFriendCircle(Resource):
             user_info["friend_circle_name"] = content["friend_circle_name"] if "friend_circle_name" in content else None
             user_info["list_friend_circle_id"] = content["list_friend_circle_id"] if "list_friend_circle_id" in content else None
             user_info["group_name"] = content["group_name"] if "group_name" in content else None
+            user_info["approval_status"] = content["approval_status"] if "approval_status" else None
+            user_info["friend_circle_image"] = content["friend_circle_image"] if "friend_circle_image" else None
 
             # clean up the inputs before calling the functions
             output = []
@@ -77,6 +79,7 @@ class ManageFriendCircle(Resource):
                     user_info["location"] = output["location"]
                     user_info["phone_number"] = output["phone_number"]
                     user_info["friend_list_flag"] = "N"
+                    user_info["approval_status"] = 1
                 else: # Check if the user is in friend list
                     if not objFriend.get_friend_by_id(user_info["referred_user_id"], user_info["referrer_user_id"],output):
                         current_app.logger.error("Error in checking the user table for id",
@@ -92,10 +95,12 @@ class ManageFriendCircle(Resource):
                         user_info["phone_number"] = output["phone_number"]
                         user_info["linked_status"] = output["linked_status"]
                         user_info["linked_user_id"] = output["linked_user_id"]
+                        user_info["approval_status"] = output["approval_status"]
                         user_info["friend_list_flag"] = "Y"
                     else:
                         user_info["linked_status"] = 0
                         user_info["linked_user_id"] = None
+                        user_info["approval_status"] = 0
                         user_info["friend_list_flag"] = "N"
 
                 hshOutput = {}
@@ -198,9 +203,11 @@ class ManageFriendCircle(Resource):
                 if output.get("user_id") is not None:
                     user_info["linked_status"] = 1
                     user_info["linked_user_id"] = output.get("user_id")
+                    user_info["approval_status"] = 1
                 else:
                     user_info["linked_status"] = 0
                     user_info["linked_user_id"] = None
+                    user_info["approval_status"] = 0
                     #if not objFriend.get_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], "DIRECT", output): # phone primary key support
                 if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
                     current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
@@ -209,10 +216,11 @@ class ManageFriendCircle(Resource):
                     user_info["linked_status"] = output["linked_status"]
                     user_info["linked_user_id"] = output["linked_user_id"]
                     user_info["friend_list_flag"] = "Y"
+                    user_info["approval_status"] = output["approval_status"]
                 else:
                     user_info["linked_status"] = 0
                     user_info["linked_user_id"] = None
-
+                    user_info["approval_status"] = 0
                 if not objFriend.insert_friend_wrapper(user_info, output):
                     current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
                     print("Unable to insert friend into the friend list " + user_info["email_address"])
@@ -270,7 +278,7 @@ class ManageFriendCircle(Resource):
                 if user_info["friend_circle_id"] is None or user_info["phone_number"] is None:
                     current_app.logger.error("The required parameters for this requests are missing")
                     return {"status" : "Failure: Unable to complete the operation"},400
-                if not objFriend.contributor_approval(user_info["friend_circle_id"], user_info["phone_number"]):
+                if not objFriend.contributor_approval(user_info["friend_circle_id"], user_info["phone_number"], user_info["approval_status"]):
                     current_app.logger.error("Unable to process the approval request")
                     return {"status" : "Failure: Unable to complete the operation"}, 400
                 return {"status" : "Success"}, 200
@@ -406,22 +414,7 @@ class InterestManagement(Resource):
         objGDBUser = GDBUser()
         loutput = []
 
-        if request_id == 3:
-            # get all interests by friend circle
-            if objGDBUser.get_category_interest(friend_circle_id, loutput):
-                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-                data = json.dumps(loutput)
-            else:
-                return {"status": "failure"}, 400
-            loutput1 = []
-            if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
-                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-                loutput.append(loutput1)
-                if len(loutput1) > 0:
-                    data = json.dumps(loutput)
-            else:
-                return {"status": "failure"}, 400
-            return {'categories': data}, 200
+
 
         objCategory = CategoryManagementDB()
 
@@ -469,6 +462,29 @@ class InterestManagement(Resource):
                 return {"status": "Failure in getting recommendation"}, 401
             return {"subcategory": json.dumps(loutput)}, 200
 
+        if request_id == 3:
+            # get all interests by friend circle
+            if objGDBUser.get_category_interest(friend_circle_id, loutput):
+                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
+                data = json.dumps(loutput)
+            else:
+                return {"status": "failure"}, 400
+            loutput1 = []
+            if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
+                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
+                loutput.append(loutput1)
+                if len(loutput1) > 0:
+                    data = json.dumps(loutput)
+            else:
+                return {"status": "failure"}, 400
+            return {'categories': data}, 200
+
+        if request_id == 4: # get the recently added interest for a given friend_circle
+            objGDBUser = GDBUser()
+            list_output = []
+            if objGDBUser.get_recently_added_interest(friend_circle_id, list_output):
+                return {"status" : "Failure in getting the recently added interest"}, 400
+            return {"interest": json.dumps(list_output)}, 200
 
 # Here is how the occasion management has been implemented.
 
