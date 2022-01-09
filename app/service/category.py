@@ -82,10 +82,10 @@ class CategoryManagement(Resource):
         age_hi = request.args.get("age_hi", type=int)
         age_lo = request.args.get("age_lo", type=int)
         gender = request.args.get("gender", type=str)
-
+        friend_circle_id = request.args.get("friend_circle_id", type=str)
         output = []
         if request_id == 1 :
-            if not objCategory.get_web_category(output):
+            if not objCategory.get_web_category(friend_circle_id, output):
                 return {"status": "Error in fetching the category"}, 400
             return json.dumps(output), 200
 
