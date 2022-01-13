@@ -138,7 +138,7 @@ class PhoneSignUpAPI(Resource):
                     current_app.logger.error("Error completing registration. Unable to send email to the user")
                     return {"Status" : "Failure in completing registration. Unable to send the email or the email is invalid"}, 401
             """
-            return {'data': json.dumps(data)}, 200
+            return {'data': json.loads(json.dumps(data))}, 200
             # Check if there is an approved invitation request for this user. If so, automatically add them to the circle
             # and take them to the circle home page.
         except Exception as e:
@@ -241,7 +241,7 @@ class LoginPhoneAPI(Resource):
             hshoutput["last_name"] = ack_hash["last_name"]
             hshoutput["location"] =  ack_hash["location"]
             hshoutput["gender"] = ack_hash["gender"]
-            return {'token': access_token, 'data': json.dumps(hshoutput)}, 200
+            return {'token': access_token, 'data': json.loads(json.dumps(hshoutput))}, 200
         except Exception as e:
             print("The error is ", e)
             return {'token': 'n/a'}, 400
