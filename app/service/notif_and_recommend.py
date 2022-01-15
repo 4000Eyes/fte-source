@@ -1,6 +1,8 @@
 from flask import request, current_app, jsonify
 from app.model.noti_recommend_db import NotificationAndRecommendationDB
 from app.model.gdbmethods import GDBUser
+from app.model.friendlistdb import FriendListDB
+from app.service.general import SiteGeneralFunctions
 from flask_restful import Resource
 import json
 import copy
@@ -11,7 +13,7 @@ class NotoficationAndRecommendation(Resource):
         try:
             request_id = request.args.get("request_id", type=int)
             user_id = request.args.get("user_id", type=str)
-
+            phone_number = request_id.args.get("phone_number", type=str)
             obj_notification = NotificationAndRecommendationDB()
             list_output = []
             list_data = []
@@ -48,7 +50,7 @@ class NotoficationAndRecommendation(Resource):
 
                 no_interest_output = []
                 if not obj_notification.get_no_interest_users(user_id, l_friend_circle, no_interest_output):
-                    return {"status": "Failure: Unable to get interest reminder data"}, 400
+                    return {"status": "Failure: Unable to get no interest reminder data"}, 400
 
                 nox_interest_output = []
                 for item in user_output:
@@ -76,7 +78,13 @@ class NotoficationAndRecommendation(Resource):
                 if len(list_output) > 0:
                     list_data.append({"approval": approval_output})
 
-                return {"data": json.dumps(list_data)}, 200
+                contributor_approval_output = []
+                objFriend = FriendListDB()
+                if not objFriend.get_open_invites(phone_number, contributor_approval_output):
+                    return {"status" : "Failure: Unable to get the list of open contributor approvals"}, 400
+                list_data.append({"contributor_invites" : contributor_approval_output})
+                return {"data": json.loads(json.dumps(list_data))}, 200
+
 
             if request_id == 2: # Just get the occasion reminders only
                 pass

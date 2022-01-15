@@ -873,24 +873,43 @@ class GDBUser(Resource):
         driver = NeoDB.get_session()
         result = None
         try:
+            # made changes on 01/11/2022. Changed the entire query.
 
-            query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
-                    "WHERE x.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN  n.user_id as user_id, n.first_name as first_name, " \
-                    " n.last_name as last_name, n.gender as gender, " \
-                    " type(rr) as relationship, x.image_url as image_url " \
-                    " UNION " \
-                    "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
-                    "WHERE x.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship , x.image_url as image_url" \
-                    " UNION " \
-                    "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
-                    "WHERE x.friend_circle_id = $friend_circle_id_" \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship, x.image_url as image_url"
+            query = " match (ff:friend_list)<-[rr]->(fc:friend_circle)<-[:CIRCLE_CREATOR]-(y:User) " \
+                     "  WHERE fc.friend_circle_id = $friend_circle_id_"\
+                     " return " \
+                     " ff.user_id as user_id," \
+                     " ff.first_name as first_name," \
+                     " ff.last_name as last_name," \
+                     " ff.gender as gender," \
+                     " type(rr) as relationship, " \
+                     " fc.friend_circle_id as friend_circle_id," \
+                     " fc.friend_circle_name as friend_circle_name," \
+                     " fc.secret_friend_id as secret_friend_id," \
+                     " fc.secret_first_name as secret_first_name," \
+                     " fc.secret_last_name as secret_last_name," \
+                     " fc.image_url as image_url," \
+                     " y.user_id as creator_id," \
+                     " y.first_name as creator_first_name," \
+                     " y.last_name as creator_last_name"
+
+            # query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
+            #         "WHERE x.friend_circle_id = $friend_circle_id_ " \
+            #         " RETURN  n.user_id as user_id, n.first_name as first_name, " \
+            #         " n.last_name as last_name, n.gender as gender, " \
+            #         " type(rr) as relationship, x.image_url as image_url " \
+            #         " UNION " \
+            #         "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
+            #         "WHERE x.friend_circle_id = $friend_circle_id_ " \
+            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+            #         " m.last_name as last_name, m.gender as gender, " \
+            #         " type(rr) as relationship , x.image_url as image_url" \
+            #         " UNION " \
+            #         "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
+            #         "WHERE x.friend_circle_id = $friend_circle_id_" \
+            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+            #         " m.last_name as last_name, m.gender as gender, " \
+            #         " type(rr) as relationship, x.image_url as image_url"
 
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
@@ -908,31 +927,61 @@ class GDBUser(Resource):
     def get_friend_circles(self, user_id, loutput):
         driver = NeoDB.get_session()
         result = None
+        # made changes on 1/11/2022. Changed the query.
         try:
-            query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
-                    "WHERE  n.user_id = $user_id_  and " \
-                    " x.secret_friend_id <> $user_id_ " \
-                    " RETURN  n.user_id as user_id, n.first_name as first_name, " \
-                    " n.last_name as last_name, n.gender as gender, " \
-                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
-                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
-                    " UNION " \
-                    "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
-                    "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ ) AND " \
-                    " x.secret_friend_id <> $user_id_ " \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
-                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
-                    " UNION " \
-                    "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
-                    "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ )  AND " \
-                    " x.secret_friend_id <> $user_id_ " \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
-                    " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name, " \
-                    " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
-                    " ORDER BY x.friend_circle_id, m.user_id"
+            query =  " match (ff:friend_list)<-[rr]->(fc:friend_circle)"\
+                     " call { "\
+                     " with fc "\
+                     " match (x:User)-[:CIRCLE_CREATOR]->(xf:friend_circle) "\
+                     " where x.user_id = $user_id_ "\
+                    " and fc.friend_circle_id = xf.friend_circle_id "\
+                     " return xf.friend_circle_id " \
+                     " union "\
+                     " with fc "\
+                     " match (pp:friend_list)<-[]->(xf:friend_circle) "\
+                     " where ( pp.user_id = $user_id_ or pp.user_id = $user_id_ ) and " \
+                     " fc.secret_friend_id <> $user_id_ "\
+                     " and pp.application_status in [0,1] "\
+                     " and xf.friend_circle_id = fc.friend_circle_id "\
+                     " return xf.friend_circle_id "\
+                     " } "\
+                     " return " \
+                     " ff.user_id as user_id," \
+                     " ff.first_name as first_name," \
+                     " ff.last_name as last_name," \
+                     " ff.gender as gender," \
+                     " type(rr) as relationship, " \
+                     " fc.friend_circle_id as friend_circle_id," \
+                     " fc.friend_circle_name as friend_circle_name," \
+                     " fc.secret_friend_id as secret_friend_id," \
+                     " fc.secret_first_name as secret_first_name," \
+                     " fc.secret_last_name as secret_last_name," \
+                     " fc.image_url as image_url"
+
+            # query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
+            #         "WHERE  n.user_id = $user_id_  and " \
+            #         " x.secret_friend_id <> $user_id_ " \
+            #         " RETURN  n.user_id as user_id, n.first_name as first_name, " \
+            #         " n.last_name as last_name, n.gender as gender, " \
+            #         " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
+            #         " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
+            #         " UNION " \
+            #         "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
+            #         "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ ) AND " \
+            #         " x.secret_friend_id <> $user_id_ " \
+            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+            #         " m.last_name as last_name, m.gender as gender, " \
+            #         " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
+            #         " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
+            #         " UNION " \
+            #         "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
+            #         "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ )  AND " \
+            #         " x.secret_friend_id <> $user_id_ " \
+            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
+            #         " m.last_name as last_name, m.gender as gender, " \
+            #         " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name, " \
+            #         " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
+            #         " ORDER BY x.friend_circle_id, m.user_id"
 
             result = driver.run(query, user_id_=user_id)
             counter = 0
@@ -1482,9 +1531,11 @@ class GDBUser(Resource):
 
     def get_subcategory_beyond_top_node(self, lweb_subcategory_id, age_hi, age_lo, gender, loutput):
         try:
+
             driver = NeoDB.get_session()
             query = "MATCH (a:WebSubCat)" \
-                    " WHERE  toInteger(a.age_lo) >= $age_lo_ " \
+                    " WHERE  " \
+                    "toInteger(a.age_lo) >= $age_lo_ " \
                     " AND toInteger(a.age_hi) <= $age_hi_ " \
                     " AND a.gender = $gender_ " \
                     " AND a.parent_id in $web_subcategory_id " \
@@ -1526,24 +1577,58 @@ class GDBUser(Resource):
 
     def get_user_summary(self, user_id, txn, hshOutput):
         try:
+            # made changes on 01/09/2021 to add to the total count of contributor to count for admin
+            # made changes on 01/10/2021 to add approval status to the query
+            # made changes on 01/11/2021 to address the underlying issue with the query.
+            query =  " match (ff:friend_list)<-[rr]->(fc:friend_circle)"\
+                     " call { "\
+                     " with fc "\
+                     " match (x:User)-[:CIRCLE_CREATOR]->(xf:friend_circle) "\
+                     " where x.user_id = $user_id_ "\
+                    " and fc.friend_circle_id = xf.friend_circle_id "\
+                     " return xf.friend_circle_id " \
+                     " union "\
+                     " with fc "\
+                     " match (pp:friend_list)<-[]->(xf:friend_circle) "\
+                     " where ( pp.user_id = $user_id_ or pp.user_id = $user_id_ ) and " \
+                     " fc.secret_friend_id <> $user_id_ "\
+                     " and pp.application_status in [0,1] "\
+                     " and xf.friend_circle_id = fc.friend_circle_id "\
+                     " return xf.friend_circle_id "\
+                     " } "\
+                     " return " \
+                     " fc.friend_circle_id as friend_circle_id," \
+                     " fc.friend_circle_name as friend_circle_name," \
+                     " fc.secret_friend_id as secret_friend_id," \
+                     " fc.secret_first_name as secret_first_name," \
+                     " fc.secret_last_name as secret_last_name," \
+                     " fc.image_url as image_url, " \
+                     " min (case ff.user_id when $user_id_ then coalesce(ff.application_status,0) end) as contrib_status," \
+                     " count(distinct ff.user_id) + 1 as total_contributors"
 
-            query = " match (ff:friend_list)-[rr]->(fc:friend_circle) " \
-                    " call { with ff match (pp:friend_list)<-[]->(fc:friend_circle) " \
-                    " where ff.user_id = pp.user_id and " \
-                    " pp.user_id <> fc.secret_friend_id and " \
-                    " pp.linked_user_id = $user_id_ " \
-                    " return fc.friend_circle_id}  " \
-                    " return  fc.friend_circle_id as friend_circle_id," \
-                    " fc.friend_circle_name as friend_circle_name," \
-                    " fc.image_url as image_url, " \
-                    " count(distinct ff.user_id) as total_contributors"
+            # query = " match (ff:friend_list)<-[rr]->(fc:friend_circle) " \
+            #         " call { with ff match (pp:friend_list)<-[]->(fc:friend_circle) " \
+            #         " where ( ff.user_id = pp.user_id or ff.user_id = pp.linked_user_id ) and " \
+            #         " pp.user_id <> fc.secret_friend_id and " \
+            #         " pp.approval_status in (0,1) and " \
+            #         " pp.linked_user_id = $user_id_ " \
+            #         " return fc.friend_circle_id , pp.approval_status as approval_status " \
+            #         "}  " \
+            #         " return  fc.friend_circle_id as friend_circle_id," \
+            #         " fc.friend_circle_name as friend_circle_name," \
+            #         " fc.image_url as image_url, " \
+            #         " approval_status, " \
+            #         " count(distinct ff.user_id) + 1 as total_contributors"
             if txn is None:
                 txn = NeoDB.get_session()
 
             result = txn.run(query, user_id_=user_id)
 
+            #made changes on 01/12/2022 to replace the key from actual friend circle id to tag "friend_circle_id"
+
             for record in result:
-                hshOutput[record["friend_circle_id"]] = record.data()
+                #hshOutput[record["friend_circle_id"]] = record.data()
+                hshOutput["friend_circle_id"] = record.data()
 
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
@@ -1710,7 +1795,7 @@ class GDBUser(Resource):
 
             create_mapping_query = "CREATE (u:User{user_id:$user_id_})-[r:OCCASION]->" \
                                    "(fo:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})" \
-                                   "<-[:IS_MAPPED]-(b:occasion{occasion_id:$occasion_id_}) return o.occasion_name  as occasion_name "
+                                   "<-[:IS_MAPPED]-(b:occasion{occasion_id:$occasion_id_}) return fo.occasion_name  as occasion_name "
             map_result = txn.run(create_mapping_query, user_id_ = creator_user_id, occasion_id_ = occasion_id, friend_circle_id_ = friend_circle_id)
             if map_result is not None:
                 for record in map_result:

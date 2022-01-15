@@ -50,8 +50,9 @@ class ManageFriendCircle(Resource):
             user_info["friend_circle_name"] = content["friend_circle_name"] if "friend_circle_name" in content else None
             user_info["list_friend_circle_id"] = content["list_friend_circle_id"] if "list_friend_circle_id" in content else None
             user_info["group_name"] = content["group_name"] if "group_name" in content else None
-            user_info["approval_status"] = content["approval_status"] if "approval_status" else None
-            user_info["friend_circle_image"] = content["friend_circle_image"] if "friend_circle_image" else None
+            user_info["approval_status"] = content["approval_status"] if "approval_status" in content else None
+            user_info["image_url"] = content["image_url"] if "image_url" in content else None
+            user_info["age"] = content["age"] if "age" in content else none
 
             # clean up the inputs before calling the functions
             output = []
@@ -79,7 +80,7 @@ class ManageFriendCircle(Resource):
                     user_info["location"] = output["location"]
                     user_info["phone_number"] = output["phone_number"]
                     user_info["friend_list_flag"] = "N"
-                    user_info["approval_status"] = 1
+                    user_info["approval_status"] = 0
                 else: # Check if the user is in friend list
                     if not objFriend.get_friend_by_id(user_info["referred_user_id"], user_info["referrer_user_id"],output):
                         current_app.logger.error("Error in checking the user table for id",
@@ -95,7 +96,7 @@ class ManageFriendCircle(Resource):
                         user_info["phone_number"] = output["phone_number"]
                         user_info["linked_status"] = output["linked_status"]
                         user_info["linked_user_id"] = output["linked_user_id"]
-                        user_info["approval_status"] = output["approval_status"]
+                        user_info["approval_status"] = 0
                         user_info["friend_list_flag"] = "Y"
                     else:
                         user_info["linked_status"] = 0
@@ -141,7 +142,7 @@ class ManageFriendCircle(Resource):
                 else:
                     current_app.logger.error("Reffered friend is successfully added to the queue and will require circle creator help" + user_info["referred_user_id"])
 
-                return {"status": json.dumps(output)}, 200
+                return   {"status": json.dumps(output)}, 200
 
             if request_id == 2:
                 # This is an invitation recommended for a non existing friend circle member by an existing member
@@ -203,7 +204,7 @@ class ManageFriendCircle(Resource):
                 if output.get("user_id") is not None:
                     user_info["linked_status"] = 1
                     user_info["linked_user_id"] = output.get("user_id")
-                    user_info["approval_status"] = 1
+                    user_info["approval_status"] = 0
                 else:
                     user_info["linked_status"] = 0
                     user_info["linked_user_id"] = None
@@ -216,7 +217,7 @@ class ManageFriendCircle(Resource):
                     user_info["linked_status"] = output["linked_status"]
                     user_info["linked_user_id"] = output["linked_user_id"]
                     user_info["friend_list_flag"] = "Y"
-                    user_info["approval_status"] = output["approval_status"]
+                    user_info["approval_status"] = 0
                 else:
                     user_info["linked_status"] = 0
                     user_info["linked_user_id"] = None
@@ -239,7 +240,7 @@ class ManageFriendCircle(Resource):
                     print( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
                     current_app.logger.error( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
                     return {"status": "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend"}, 400
-                return {"status" : json.dumps(output)}, 200
+                return {"status" : json.loads(json.dumps(output))}, 200
             if request_id == 4:
                 #if user_info["email_address"] is None or user_info["referrer_user_id"] is None: #phone primary key support
                 if user_info["phone_number"] is None or user_info["referrer_user_id"] is None:
@@ -254,7 +255,7 @@ class ManageFriendCircle(Resource):
                         return {"status" : "secret circle for this email exists"}, 400
                 output = {}
                 if objFriend.create_secret_friend(user_info, output):
-                    return {"status": json.dumps(output)}, 200
+                    return {"status": json.loads(json.dumps(output))}, 200
                 else:
                     return {"status" : "Failure. Unable to create friend circle"}, 401
 
@@ -316,7 +317,7 @@ class ManageFriendCircle(Resource):
             # Get specific friend circle data
             print("Enter in the request id 1 loop")
             if objGDBUser.get_friend_circle(friend_circle_id, output):
-                data = json.dumps(output)
+                data = json.loads(json.dumps(output))
                 return {'friend_circle_id': data}, 200
             else:
                 return {"status":"Failure"}, 400
@@ -324,8 +325,8 @@ class ManageFriendCircle(Resource):
             if not objGDBUser.get_friend_circles(user_id, output):
                 print('There is an issue getting friend_circle_data for ', user_id)
                 return {"Erros": "unable to get friend circle information. retry"}, 500
-            data = json.dumps(output)
-            return {'friend_circle_id': data}, 200
+
+            return {'data': json.loads(json.dumps(output))}, 200
 
         if request_id == 3:
             objFriend = FriendListDB()
@@ -633,9 +634,9 @@ class FriendAttributes(Resource):
         user_id = request.args.get("user_id", type=str)
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         objFriend = FriendListDB()
-        hshOutput = {}
+        list_output = []
         if request_id == 1: # get age
-            if objFriend.get_secret_friend_age(friend_circle_id, hshOutput):
+            if not objFriend.get_secret_friend_age_gender(friend_circle_id, list_output):
                 return {"status" : " Error in getting age for the friend circle"}
-            return {"status" : json.dumps(hshOutput)}
+            return {"status" : json.loads(json.dumps(list_output))}, 200
         return {"status" : "success"}, 200

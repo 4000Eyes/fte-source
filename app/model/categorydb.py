@@ -241,12 +241,15 @@ class CategoryManagementDB(Resource):
             current_app.logger.error("Error in linking brand to subcategory" + e)
             return False
 
-    def get_web_category(self, output):
+    def get_web_category(self, friend_circle_id, output):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:WebCat) " \
-                    " RETURN a.web_category_id as web_category_id, a.web_category_name as web_category_name"
-            result = driver.run(query)
+            query =  "match (a:WebCat) " \
+                     "where not exists { match (a)<-[r:INTEREST]-(u:User) where r.friend_circle_id = $friend_circle_id_ }  " \
+                     "return a.web_category_id as web_category_id, a.web_category_name as web_category_name"
+
+            result = driver.run(query, friend_circle_id_ = friend_circle_id
+                                )
             if result is None:
                 return False
             for record in result:

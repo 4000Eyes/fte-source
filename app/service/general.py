@@ -1,3 +1,4 @@
+import json
 
 class SiteGeneralFunctions():
     @classmethod
@@ -10,3 +11,4 @@ class SiteGeneralFunctions():
                 rhsh["hi"] = i[1]
                 return True
         return False
+

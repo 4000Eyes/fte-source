@@ -82,12 +82,12 @@ class CategoryManagement(Resource):
         age_hi = request.args.get("age_hi", type=int)
         age_lo = request.args.get("age_lo", type=int)
         gender = request.args.get("gender", type=str)
-
+        friend_circle_id = request.args.get("friend_circle_id", type=str)
         output = []
         if request_id == 1 :
-            if not objCategory.get_web_category(output):
+            if not objCategory.get_web_category(friend_circle_id, output):
                 return {"status": "Error in fetching the category"}, 400
-            return json.dumps(output), 200
+            return json.loads(json.dumps(output)), 200
 
         if age_lo is None or age_hi is None or gender is None:
             return {"status": " Age and gender cannot be null"}, 400
@@ -95,12 +95,12 @@ class CategoryManagement(Resource):
         if request_id == 2:
             if not objCategory.get_web_subcategory(category_id,age_lo, age_hi, gender, output):
                 return {"status": "Error in fetching the subcategory"}, 400
-            return output, 200
+            return {json.loads((json.dumps(output)))}, 200
 
         if request_id == 3:
             if not objCategory.get_brands( age_lo, age_hi, gender,  output):
                 return {"status": "Error in fetching the brands"}, 400
-            return {"data": json.dumps(output)}, 200
+            return {"data": json.loads(json.dumps(output))}, 200
 
         if request_id == 4:
             if not objCategory.get_web_subcategory_brands(subcategory_brand_list, age_lo, age_hi, gender, output):
