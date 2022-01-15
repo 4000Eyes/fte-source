@@ -8,12 +8,12 @@ import json
 import copy
 
 
-class NotoficationAndRecommendation(Resource):
+class NotificationAndRecommendation(Resource):
     def get(self):
         try:
             request_id = request.args.get("request_id", type=int)
             user_id = request.args.get("user_id", type=str)
-            phone_number = request_id.args.get("phone_number", type=str)
+            phone_number = request.args.get("phone_number", type=str)
             obj_notification = NotificationAndRecommendationDB()
             list_output = []
             list_data = []

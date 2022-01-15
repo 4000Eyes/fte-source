@@ -1011,7 +1011,6 @@ class GDBUser(Resource):
                     " fc.secret_friend_id as secret_friend_id"
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
-                print("The user is ", record["user_exists"])
                 hsh["friend_circle_id"] = record["friend_circle_id"]
                 hsh["gender"] = record["gender"]
                 hsh["age"] = record["age"]
@@ -1511,11 +1510,12 @@ class GDBUser(Resource):
 
     def get_subcategory_initial_recommendation(self, lweb_category_id, age_hi, age_lo, gender, loutput):
         try:
+            #made changes on 01/13/2022 to remove gender from the query
+            #                    " AND a.gender = $gender_ " \
             driver = NeoDB.get_session()
             query = "MATCH (a:WebSubCat)" \
                     " WHERE toInteger(a.age_lo) <= $age_lo_ " \
                     " AND toInteger(a.age_hi) >= $age_hi_ " \
-                    " AND a.gender = $gender_ " \
                     " AND a.parent_id in $web_category_id_ " \
                     " RETURN distinct a.web_subcategory_id as web_subcategory_id, a.web_subcategory_name as web_subcategory_name"
             result = driver.run(query, web_category_id_=lweb_category_id, age_lo_=age_lo, age_hi_=age_hi,
@@ -1567,7 +1567,7 @@ class GDBUser(Resource):
 
             result = driver.run(query, friend_circle_id_ = friend_circle_id)
             for record in result:
-                loutput.append(record.data())
+                list_output.append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -1746,16 +1746,20 @@ class GDBUser(Resource):
             check_result = txn.run(check_occasion_query,
                                    occasion_name_ = custom_occasion_name.lower(),
                                    friend_circle_id_ = friend_circle_id)
-            record = check_result.single()
-            info = check_result.consume().counters.nodes_created
-            if info <= 0 and check_result is not None:
+            for occasion_row in check_result:
+                occasion_id = occasion_row["occasion_id"]
+            if occasion_id is None:
                 occasion_id = str(uuid.uuid4())
-                query = "CREATE (o:occasion{occasion_id:$occasion_id_, " \
-                        "occasion_name:$occasion_name_, " \
-                        "occasion_frequency: $occasion_frequency_," \
-                        "created_dt:$created_dt_," \
-                        "status_id:$status_," \
-                        "friend_circle_id: $friend_circle_id_}) return o.occasion_id as occasion_id"
+                query = "MERGE (o:occasion{occasion_id:$occasion_id_,friend_circle_id: $friend_circle_id_}) " \
+                        "ON CREATE " \
+                        "set " \
+                        " o.occasion_id = $occasion_id_," \
+                        " o.friend_circle_id = $friend_circle_id_ , "\
+                        "o.occasion_name = $occasion_name_, " \
+                        "o.occasion_frequency = $occasion_frequency_," \
+                        "o.created_dt = $created_dt_," \
+                        "o.status_id =$status_ " \
+                        "return o.occasion_id as occasion_id"
 
                 result = txn.run(query,
                                 occasion_id_ = occasion_id,
@@ -1764,47 +1768,55 @@ class GDBUser(Resource):
                                  occasion_frequency_ = frequency,
                                  occasion_name_ = custom_occasion_name,
                                  created_dt_=self.get_datetime())
-                if result is not None:
-                    for record in result:
-                        hsh["occasion_id"] = record["occasion_id"]
-                else:
-                    current_app.logger.error("Occasion not inserted")
+
+                for record in result:
+                    hsh["occasion_id"] = record["occasion_id"]
+                if hsh["occasion_id"] is None:
                     txn.rollback()
+                    current_app.logger.error("Something did not go right. Occasion insertion didnt work")
                     return False
 
-            else:
-                occasion_id = record["occasion_id"]
-
-            insert_occasion_query = "CREATE (b:friend_occasion{occasion_id:$occasion_id_, " \
-                                    "created_dt:$created_dt_," \
-                                    "occasion_frequency:$occasion_frequency_," \
-                                    "occasion_date:$occasion_date_," \
-                                    "occasion_timezone:$occasion_timezone_," \
-                                    "friend_circle_id:$friend_circle_id_}) return b.occasion_id as occasion_id"
+            insert_occasion_query = "MERGE (b:friend_occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
+                                    " ON CREATE SET " \
+                                    "b.created_dt =$created_dt_," \
+                                    "b.occasion_frequency=$occasion_frequency_," \
+                                    "b.occasion_date=$occasion_date_," \
+                                    "b.occasion_timezone=$occasion_timezone_," \
+                                    "b.friend_circle_id=$friend_circle_id_," \
+                                    "b.occasion_id = $occasion_id_ " \
+                                    " ON MATCH SET " \
+                                    "b.occasion_id = $occasion_id_, " \
+                                    "b.created_dt =$created_dt_," \
+                                    "b.occasion_frequency=$occasion_frequency_," \
+                                    "b.occasion_date=$occasion_date_," \
+                                    "b.occasion_timezone=$occasion_timezone_," \
+                                    "b.friend_circle_id=$friend_circle_id_ " \
+                                    " return b.occasion_id as occasion_id"
             insert_result = txn.run(insert_occasion_query, occasion_id_ =occasion_id,
                                     created_dt_ = self.get_datetime(), occasion_frequency_ = frequency ,
                                     occasion_timezone_ = occasion_timezone, occasion_date_ = occasion_date,
                                     friend_circle_id_ = friend_circle_id)
-            if insert_result is not None:
-                for record in insert_result:
-                    hsh["occasion_id"] = record["occasion_id"]
-            else:
+            for record in insert_result:
+                hsh["occasion_id"] = record["occasion_id"]
+            if hsh["occasion_id"] is None:
                 txn.rollback()
-                current_app.logger.error("Something did not go right. Occasion insertion didnt work")
+                current_app.logger.error("Something did not go right. Occasion insert didnt work")
                 return False
 
-            create_mapping_query = "CREATE (u:User{user_id:$user_id_})-[r:OCCASION]->" \
-                                   "(fo:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})" \
-                                   "<-[:IS_MAPPED]-(b:occasion{occasion_id:$occasion_id_}) return fo.occasion_name  as occasion_name "
+            create_mapping_query = "MATCH (u:User{user_id:$user_id_}), " \
+                                   "(fo:friend_occasion{friend_circle_id:$friend_circle_id_, " \
+                                   "occasion_id:$occasion_id_}), (b:occasion{occasion_id:$occasion_id_}) " \
+                                   "MERGE (u)-[r:OCCASION]->(fo)<-[:IS_MAPPED]-(b) " \
+                                   "return fo.occasion_id  as occasion_id , u.user_id as user_id"
             map_result = txn.run(create_mapping_query, user_id_ = creator_user_id, occasion_id_ = occasion_id, friend_circle_id_ = friend_circle_id)
-            if map_result is not None:
-                for record in map_result:
-                    hsh["occasion_name"] = record["occasion_name"]
-            else:
+            for record in map_result:
+                print(record)
+                hsh["user_id"] = record["user_id"]
+
+            if hsh["user_id"] is None:
                 txn.rollback()
                 current_app.logger.error("Something did not go right in creating the relationship")
                 return False
-
             txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:

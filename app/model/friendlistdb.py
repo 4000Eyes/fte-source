@@ -99,7 +99,8 @@ class FriendListDB:
                     " a.friend_id = $friend_id_ " \
                     " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
                     "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location," \
-                    "a.linked_status as linked_status, a.linked_user_id as linked_user_id, a.approval_status as approval_status"
+                    "a.linked_status as linked_status, a.linked_user_id as linked_user_id, a.approval_status as approval_status," \
+                    "a.age as age, a.gender as gender"
 
             result = driver.run(query, user_id_=user_id, friend_id_=referrer_user_id)
 
@@ -114,6 +115,8 @@ class FriendListDB:
                 hshOutput["linked_status"] = record["linked_status"]
                 hshOutput["linked_user_id"] = record["linked_user_id"]
                 hshOutput["approval_status"] = record["approval_status"]
+                hshOutput["age"] = record["age"]
+                hshOutput["gender"] = record["gender"]
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
@@ -429,8 +432,12 @@ class FriendListDB:
                     " a.source_type = $source_type_," \
                     " a.location = $location_," \
                     " a.first_name=$first_name_, a.last_name=$last_name_," \
-                    " a.approval_status = $approval_status_ " \
-                    " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location "
+                    " a.approval_status = $approval_status_ ," \
+                    " a.gender = $gender_ ," \
+                    " a.age = $age_ " \
+                    " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
+                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, " \
+                    "a.location as location, a.age as age, a.gender as gender "
 
             if "referred_user_id" not in hshuser or hshuser["referred_user_id"] is None:
                 txn.rollback()
@@ -454,7 +461,9 @@ class FriendListDB:
                              linked_user_id_=hshuser["linked_user_id"],
                              source_type_=hshuser["source_type"],
                              location_=hshuser["location"],
-                             approval_status_ = hshuser["approval_status"]
+                             approval_status_ = hshuser["approval_status"],
+                             age_ = hshuser["age"] if "age" in hshuser else None,
+                             gender_ = hshuser["gender"] if "gender" in hshuser else None
                              )
             if result is None:
                 loutput = None
@@ -499,6 +508,7 @@ class FriendListDB:
                     print("Unable to insert the email address into friend circle " + hshuser["email_address"])
                     return False
                 objMongo = MongoDBFunctions()
+                hshuser["user_id"] = hshuser["referrer_user_id"]
                 if not objMongo.insert_user(hshuser):
                     txn.rollback()
                     current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
@@ -523,12 +533,14 @@ class FriendListDB:
                     return False
                 objGDBUser = GDBUser()
 
-                if not objGDBUser.get_friend_circles(hshuser["friend_circle_id"], loutput):
+                list_output = []
+                if not objGDBUser.get_friend_circle(hshuser["friend_circle_id"], list_output):
                     txn.rollback()
                     current_app.logger.error(
                         "Unable to get the friend circle details ffor this contributor" + hshuser["friend_circle_id"])
                     print("Unable to get the friend circle details ffor this contributor" + hshuser["friend_circle_id"])
                     return False
+                loutput["data"] = list_output
             else:
                 objMongo = MongoDBFunctions()
                 hshuser["user_type"] = "Existing"
@@ -818,7 +830,7 @@ class FriendListDB:
 
                     insert_circle = " CREATE (x:friend_circle{friend_circle_id:$friend_circle_id_, " \
                                     "friend_circle_name:$friend_circle_name_, creator_id: $friend_id_, secret_friend_id:$secret_friend_id_, secret_friend_name:$secret_first_name_," \
-                                    "secret_last_name:$secret_last_name_, age:$age_, gender:$gender_ created_dt:$created_dt_}) " \
+                                    "secret_last_name:$secret_last_name_, age:$age_, gender:$gender_, created_dt:$created_dt_}) " \
                                     " WITH x " \
                                     " MATCH (n:User{user_id:$friend_id_}), (x:friend_circle{friend_circle_id:$friend_circle_id_})" \
                                     ", (m:friend_list{user_id:$user_id_, friend_id:$friend_id_})" \
@@ -945,16 +957,17 @@ class FriendListDB:
             current_app.logger.error("The error is " + e)
             return False
 
-    def add_secret_friend_age(self, user_id, friend_circle_id, age):
+    def add_secret_friend_age(self, user_id, friend_circle_id, age, gender=None):
         try:
             driver = NeoDB.get_session()
-            query = " MATCH (fc:friend_circle { friend_circle_id:$friend_circle_id} " \
-                    " SET fc.age = $secret_friend_age_," \
-                    " fc.last_set_by = $user_id_ " \
+            query = " MATCH (fc:friend_circle { friend_circle_id:$friend_circle_id_} )" \
+                    " SET fc.age = $age_," \
+                    " fc.gender = $gender_," \
+                    " fc.last_set_by = $user_id_, " \
                     " fc.updated_dt = $updated_dt_" \
                     " RETURN fc.friend_circle_id as friend_circle_id"
 
-            result = driver.run(query, user_id_=user_id, updated_dt_=self.get_datetime(),
+            result = driver.run(query, user_id_=user_id, age_ = age, gender_ = gender, updated_dt_=self.get_datetime(),
                                 friend_circle_id_=friend_circle_id)
 
             if result is not None:
@@ -1149,8 +1162,7 @@ class FriendListDB:
                 print("The  parameters is ", result.consume().parameters)
                 for record in result:
                     list_output.append(record.data())
-                    return True
-                return False
+                return True
             except neo4j.exceptions.Neo4jError as e:
                 print("THere is a syntax error", e.message)
                 return False
