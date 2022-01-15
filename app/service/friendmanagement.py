@@ -52,7 +52,7 @@ class ManageFriendCircle(Resource):
             user_info["group_name"] = content["group_name"] if "group_name" in content else None
             user_info["approval_status"] = content["approval_status"] if "approval_status" in content else None
             user_info["image_url"] = content["image_url"] if "image_url" in content else None
-            user_info["age"] = content["age"] if "age" in content else none
+            user_info["age"] = content["age"] if "age" in content else None
 
             # clean up the inputs before calling the functions
             output = []
@@ -79,6 +79,7 @@ class ManageFriendCircle(Resource):
                     user_info["email_address"] = output["email_address"]
                     user_info["location"] = output["location"]
                     user_info["phone_number"] = output["phone_number"]
+                    user_info["gender"] = output["gender"]
                     user_info["friend_list_flag"] = "N"
                     user_info["approval_status"] = 0
                 else: # Check if the user is in friend list
@@ -96,6 +97,7 @@ class ManageFriendCircle(Resource):
                         user_info["phone_number"] = output["phone_number"]
                         user_info["linked_status"] = output["linked_status"]
                         user_info["linked_user_id"] = output["linked_user_id"]
+                        user_info["gender"] = output["gender"]
                         user_info["approval_status"] = 0
                         user_info["friend_list_flag"] = "Y"
                     else:
@@ -114,13 +116,13 @@ class ManageFriendCircle(Resource):
                     return {"status" : "Unable to check the roles of the user"}, 400
                 if user_info["referred_user_id"] in hshOutput:
                     if hshOutput[user_info["referred_user_id"]]["contrib_flag"] == "Y":
-                        return {"status", "User is already a contributor to the friend circle "}, 400
+                        return {"status": "User is already a contributor to the friend circle "}, 400
 
                     if hshOutput[user_info["referred_user_id"]]["secret_friend_flag"] == "Y":
-                        return {"status", " recommended user is the secret friend "}, 400
+                        return {"status": " recommended user is the secret friend "}, 400
 
                     if hshOutput[user_info["referred_user_id"]]["circle_creator_flag"] == "Y":
-                        return {"status", " creator cannot be the contributor "}, 400
+                        return {"status": " creator cannot be the contributor "}, 400
 
                 is_admin = 0
                 if user_info["referrer_user_id"] not in hshOutput:
@@ -161,13 +163,13 @@ class ManageFriendCircle(Resource):
                 if user_info["email_address"] in hshOutput:
 
                     if hshOutput[user_info["email_address"]]["contrib_flag"] == "Y":
-                        return {"status", "User is already a contributor to the friend circle "}, 400
+                        return {"status": "User is already a contributor to the friend circle "}, 400
 
                     if hshOutput[user_info["email_address"]]["secret_friend_flag"] == "Y":
-                        return {"status", " recommended user is the secret friend "}, 400
+                        return {"status": " recommended user is the secret friend "}, 400
 
                     if hshOutput[user_info["email_address"]]["circle_creator_flag"] == "Y":
-                        return {"status", " creator cannot be the contributor "}, 400
+                        return {"status": " creator cannot be the contributor "}, 400
 
                     if hshOutput[user_info["email_address"]]["user_id"] is not None and hshOutput[user_info["email_address"]]["friend_id"] is not None:
                         friend_record_exists = 1
@@ -448,9 +450,9 @@ class InterestManagement(Resource):
                 if ("lo" not in hsh   or "hi" not in hsh) or (hsh["lo"] is None or hsh["hi"] is None):
                     current_app.logger.error("Age hi or lo is missing or invalid")
                     return {"status":"Failure: Unable to get age range"}, 400
-            if gender is None:
-                current_app.logger.error("gender cannot be none and it is")
-                return {"status" : "Failure: Unable to get the gender"}, 400
+            # if gender is None:
+            #     current_app.logger.error("gender cannot be none and it is")
+            #     return {"status" : "Failure: Unable to get the gender"}, 400
 
             if not SiteGeneralFunctions.get_age_range(age, hsh):
                 current_app.logger.error("Unable to get age range")
@@ -461,13 +463,13 @@ class InterestManagement(Resource):
                 current_app.logger.error(
                     "Unable to get smarter recommendation for friend circle id" + friend_circle_id)
                 return {"status": "Failure in getting recommendation"}, 401
-            return {"subcategory": json.dumps(loutput)}, 200
+            return {"subcategory": json.loads(json.dumps(loutput))}, 200
 
         if request_id == 3:
             # get all interests by friend circle
             if objGDBUser.get_category_interest(friend_circle_id, loutput):
                 print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-                data = json.dumps(loutput)
+                data = json.loads(json.dumps(loutput))
             else:
                 return {"status": "failure"}, 400
             loutput1 = []
@@ -549,7 +551,7 @@ class OccasionManagement(Resource):
                 return {"status" :"Failure: Insufficient parameters"}
             if not objGDBUser.create_custom_occasion(occasion_name, friend_circle_id, frequency, creator_user_id, occasion_date, value_timezone, hsh):
                 return {"status" : "Failure: Unable to create custom occasion"}, 400
-            return {"occasion_id": json.dumps(hsh) }, 200
+            return {"occasion_id": json.loads(json.dumps(hsh)) }, 200
 
         if request_id == 5: # deactivate custom occasion. This would require custom_occasion_id, admin_user_id
             if occasion_id is None or friend_circle_id is None:
@@ -612,6 +614,7 @@ class FriendAttributes(Resource):
         friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
         user_id = content["user_id"] if "user_id" in content else None
         age = content["age"] if "age" in content else None
+        gender = content["gender"] if "gender" in content else None
         relation_type = content["relation_type"] if "relation_type" in content else None
         image_type = content["image_type"] if "image_type" in content else None
         image_url = content["image_url"] if "image_url" in content else None
@@ -620,7 +623,7 @@ class FriendAttributes(Resource):
         if request is None:
             return {"status" : " Request id is missing"}, 400
         if request_id == 1: # Adding Age
-            if not objFriend.add_secret_friend_age(user_id, friend_circle_id, age):
+            if not objFriend.add_secret_friend_age(user_id, friend_circle_id, age, gender):
                 return {"status" : "Failure in adding age"}, 400
         if request_id == 2: # Adding Relationship
             if not objFriend.add_relationship(user_id, friend_circle_id, relation_type):
