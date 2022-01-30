@@ -13,6 +13,7 @@ import collections
 import pytz
 from datetime import datetime, tzinfo, timedelta
 from dateutil.relativedelta import relativedelta
+import re
 
 
 # User object
@@ -626,22 +627,21 @@ class GDBUser(Resource):
             query = " call { MATCH (n:User)-[rr]->(x:friend_circle) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND" \
                     " n.user_id = $user_id_ " \
-                    " RETURN  n.user_id as user_id, n.first_name as first_name, " \
-                    " n.last_name as last_name, n.gender as gender, " \
+                    " RETURN  n.user_id as user_id, " \
                     " type(rr) as relationship " \
                     " UNION " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.user_id =  $user_id_  " \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
+                    " ( m.user_id =  $user_id_ or" \
+                    " m.linked_user_id = $user_id_ )  " \
+                    " RETURN  coalesce(m.linked_user_id, m.user_id) as user_id, " \
                     " type(rr) as relationship" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.user_id = $user_id_ " \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
+                    " ( m.user_id = $user_id_ or " \
+                    " m.linked_user_id = $user_id_ ) " \
+                    " RETURN  coalesce(m.linked_user_id, m.user_id) as user_id, " \
                     " type(rr) as relationship " \
                     " } " \
                     " return " \
@@ -696,22 +696,21 @@ class GDBUser(Resource):
             query = " call { MATCH (n:User)-[rr]->(x:friend_circle) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND" \
                     " n.user_id in [ $user_id_ , $friend_id_ ] " \
-                    " RETURN  n.user_id as user_id, n.first_name as first_name, " \
-                    " n.last_name as last_name, n.gender as gender, " \
+                    " RETURN  n.user_id as user_id,  " \
                     " type(rr) as relationship " \
                     " UNION " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.user_id in [ $user_id_ , $friend_id_ ] " \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
+                    " ( m.user_id in [ $user_id_ , $friend_id_ ] or " \
+                    "  m.linked_user_id in [ $user_id_ , $friend_id_ ] ) " \
+                    " RETURN  coalesce(m.linked_user_id, m.user_id) as user_id,   " \
                     " type(rr) as relationship" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-                    " m.user_id in [ $user_id_ , $friend_id_ ] " \
-                    " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-                    " m.last_name as last_name, m.gender as gender, " \
+                    " ( m.user_id in [ $user_id_ , $friend_id_ ] or " \
+                    " m.linked_user_id in [ $user_id_ , $friend_id_ ] ) " \
+                    " RETURN  coalesce(m.linked_user_id, m.user_id) as user_id, " \
                     " type(rr) as relationship " \
                     " } " \
                     " return " \
@@ -767,48 +766,25 @@ class GDBUser(Resource):
 
             # phone primary key support
 
-            # query = " call { " \
-            #         "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
-            #         "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-            #         " m.email_address = $email_address_ AND " \
-            #         " m.friend_id = $friend_id_ AND " \
-            #         " m.source_type = 'DIRECT' " \
-            #         " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
-            #         " type(rr) as relationship" \
-            #         " UNION " \
-            #         "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
-            #         "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
-            #         " m.email_address = $email_address_ AND" \
-            #         " m.friend_id = $friend_id_ AND " \
-            #         " m.source_type = 'DIRECT' " \
-            #         " RETURN  m.email_address as email_address, m.user_id as user_id, m.friend_id as friend_id, " \
-            #         " type(rr) as relationship " \
-            #         " } " \
-            #         " return " \
-            #         " user_id ," \
-            #         " CASE when relationship = 'CONTRIBUTOR'  then 'Y' else 'N' end as contrib_flag, " \
-            #         " CASE when relationship = 'SECRET_FRIEND'  then 'Y' else 'N'  end as secret_friend_flag, " \
-            #         " CASE when relationship = 'CIRCLE_CREATOR'  then 'Y' else 'N' end  as circle_creator_flag "
-
             query = " call { " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
                     " m.phone_number = $phone_number_ AND " \
-                    " m.friend_id = $friend_id_ AND " \
-                    " m.source_type = 'DIRECT' " \
-                    " RETURN  m.phone_number as phone_number, m.user_id as user_id, m.friend_id as friend_id, " \
+                    " m.friend_id = $friend_id_  " \
+                    " RETURN m.phone_number as phone_number, m.user_id as user_id, m.friend_id as friend_id, " \
                     " type(rr) as relationship" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
                     " m.phone_number = $phone_number_ AND" \
-                    " m.friend_id = $friend_id_ AND " \
-                    " m.source_type = 'DIRECT' " \
+                    " m.friend_id = $friend_id_  " \
                     " RETURN  m.phone_number as phone_number, m.user_id as user_id, m.friend_id as friend_id, " \
                     " type(rr) as relationship " \
                     " } " \
                     " return " \
                     " user_id ," \
+                    " friend_id, " \
+                    " phone_number, " \
                     " CASE when relationship = 'CONTRIBUTOR'  then 'Y' else 'N' end as contrib_flag, " \
                     " CASE when relationship = 'SECRET_FRIEND'  then 'Y' else 'N'  end as secret_friend_flag, " \
                     " CASE when relationship = 'CIRCLE_CREATOR'  then 'Y' else 'N' end  as circle_creator_flag "
@@ -816,10 +792,10 @@ class GDBUser(Resource):
             result = driver.run(query, friend_circle_id_=friend_circle_id, phone_number_=phone_number,
                                 friend_id_=referrer_user_id)
             counter = 0
-            user_id = None
+            phone_number = None
             for record in result:
-                if counter == 0 or record["user_id"] != user_id:
-                    user_id = record["email_address"]
+                if counter == 0 or record["phone_number"] != phone_number:
+                    phone_number = record["phone_number"]
 
                     # phone primary key support
 
@@ -839,24 +815,24 @@ class GDBUser(Resource):
 
                     counter = 1
 
-                if hshOutput[record["user_id"]]["user_id"] is None:
-                    hshOutput[record["user_id"]]["user_id"] = record["user_id"]
-                    hshOutput[record["user_id"]]["friend_id"] = record["friend_id"]
+                if hshOutput[record["phone_number"]]["user_id"] is None:
+                    hshOutput[record["phone_number"]]["user_id"] = record["user_id"]
+                    hshOutput[record["phone_number"]]["friend_id"] = record["friend_id"]
 
-                if hshOutput[record["user_id"]]["contrib_flag"] == "N" and record["contrib_flag"] == "Y":
-                    hshOutput[record["user_id"]]["contrib_flag"] = record["contrib_flag"]
+                if hshOutput[record["phone_number"]]["contrib_flag"] == "N" and record["contrib_flag"] == "Y":
+                    hshOutput[record["phone_number"]]["contrib_flag"] = record["contrib_flag"]
                 else:
-                    hshOutput[record["user_id"]]["contrib_flag"] = "N"
+                    hshOutput[record["phone_number"]]["contrib_flag"] = "N"
 
-                if hshOutput[record["user_id"]]["secret_friend_flag"] == "N" and record["secret_friend_flag"] == "Y":
-                    hshOutput[record["user_id"]]["secret_friend_flag"] = record["secret_friend_flag"]
+                if hshOutput[record["phone_number"]]["secret_friend_flag"] == "N" and record["secret_friend_flag"] == "Y":
+                    hshOutput[record["phone_number"]]["secret_friend_flag"] = record["secret_friend_flag"]
                 else:
-                    hshOutput[record["user_id"]]["secret_friend_flag"] = "N"
+                    hshOutput[record["phone_number"]]["secret_friend_flag"] = "N"
 
-                if hshOutput[record["user_id"]]["circle_creator_flag"] == "N" and record["circle_creator_flag"] == "Y":
-                    hshOutput[record["user_id"]]["circle_creator_flag"] = record["circle_creator_flag"]
+                if hshOutput[record["phone_number"]]["circle_creator_flag"] == "N" and record["circle_creator_flag"] == "Y":
+                    hshOutput[record["phone_number"]]["circle_creator_flag"] = record["circle_creator_flag"]
                 else:
-                    hshOutput[record["user_id"]]["circle_creator_flag"] = "N"
+                    hshOutput[record["phone_number"]]["circle_creator_flag"] = "N"
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -882,6 +858,7 @@ class GDBUser(Resource):
                      " ff.first_name as first_name," \
                      " ff.last_name as last_name," \
                      " ff.gender as gender," \
+                     " ff.age as age," \
                      " type(rr) as relationship, " \
                      " fc.friend_circle_id as friend_circle_id," \
                      " fc.friend_circle_name as friend_circle_name," \
@@ -941,7 +918,7 @@ class GDBUser(Resource):
                      " match (pp:friend_list)<-[]->(xf:friend_circle) "\
                      " where ( pp.user_id = $user_id_ or pp.user_id = $user_id_ ) and " \
                      " fc.secret_friend_id <> $user_id_ "\
-                     " and pp.application_status in [0,1] "\
+                     " and (pp.approval_status in [0,1] or pp.approval_status is null) "\
                      " and xf.friend_circle_id = fc.friend_circle_id "\
                      " return xf.friend_circle_id "\
                      " } "\
@@ -950,38 +927,15 @@ class GDBUser(Resource):
                      " ff.first_name as first_name," \
                      " ff.last_name as last_name," \
                      " ff.gender as gender," \
+                     " ff.age as age," \
                      " type(rr) as relationship, " \
                      " fc.friend_circle_id as friend_circle_id," \
                      " fc.friend_circle_name as friend_circle_name," \
                      " fc.secret_friend_id as secret_friend_id," \
-                     " fc.secret_first_name as secret_first_name," \
+                     " fc.secret_friend_name as secret_first_name," \
                      " fc.secret_last_name as secret_last_name," \
                      " fc.image_url as image_url"
 
-            # query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
-            #         "WHERE  n.user_id = $user_id_  and " \
-            #         " x.secret_friend_id <> $user_id_ " \
-            #         " RETURN  n.user_id as user_id, n.first_name as first_name, " \
-            #         " n.last_name as last_name, n.gender as gender, " \
-            #         " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
-            #         " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
-            #         " UNION " \
-            #         "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
-            #         "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ ) AND " \
-            #         " x.secret_friend_id <> $user_id_ " \
-            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-            #         " m.last_name as last_name, m.gender as gender, " \
-            #         " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name," \
-            #         " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
-            #         " UNION " \
-            #         "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
-            #         "WHERE ( m.friend_id = $user_id_ or m.linked_user_id = $user_id_ )  AND " \
-            #         " x.secret_friend_id <> $user_id_ " \
-            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-            #         " m.last_name as last_name, m.gender as gender, " \
-            #         " type(rr) as relationship, x.friend_circle_id as friend_circle_id, x.friend_circle_name as friend_circle_name, " \
-            #         " x.secret_friend_id as secret_friend_id, x.secret_first_name as secret_first_name, x.secret_last_name as secret_last_name, x.image_url as image_url" \
-            #         " ORDER BY x.friend_circle_id, m.user_id"
 
             result = driver.run(query, user_id_=user_id)
             counter = 0
@@ -1590,9 +1544,9 @@ class GDBUser(Resource):
                      " union "\
                      " with fc "\
                      " match (pp:friend_list)<-[]->(xf:friend_circle) "\
-                     " where ( pp.user_id = $user_id_ or pp.user_id = $user_id_ ) and " \
+                     " where ( pp.user_id = $user_id_ or pp.linked_user_id = $user_id_ ) and " \
                      " fc.secret_friend_id <> $user_id_ "\
-                     " and pp.application_status in [0,1] "\
+                     " and (pp.approval_status in [0,1] or pp.approval_status is null) "\
                      " and xf.friend_circle_id = fc.friend_circle_id "\
                      " return xf.friend_circle_id "\
                      " } "\
@@ -1603,22 +1557,11 @@ class GDBUser(Resource):
                      " fc.secret_first_name as secret_first_name," \
                      " fc.secret_last_name as secret_last_name," \
                      " fc.image_url as image_url, " \
+                     " fc.age as age," \
                      " min (case ff.user_id when $user_id_ then coalesce(ff.application_status,0) end) as contrib_status," \
                      " count(distinct ff.user_id) + 1 as total_contributors"
 
-            # query = " match (ff:friend_list)<-[rr]->(fc:friend_circle) " \
-            #         " call { with ff match (pp:friend_list)<-[]->(fc:friend_circle) " \
-            #         " where ( ff.user_id = pp.user_id or ff.user_id = pp.linked_user_id ) and " \
-            #         " pp.user_id <> fc.secret_friend_id and " \
-            #         " pp.approval_status in (0,1) and " \
-            #         " pp.linked_user_id = $user_id_ " \
-            #         " return fc.friend_circle_id , pp.approval_status as approval_status " \
-            #         "}  " \
-            #         " return  fc.friend_circle_id as friend_circle_id," \
-            #         " fc.friend_circle_name as friend_circle_name," \
-            #         " fc.image_url as image_url, " \
-            #         " approval_status, " \
-            #         " count(distinct ff.user_id) + 1 as total_contributors"
+
             if txn is None:
                 txn = NeoDB.get_session()
 
@@ -1651,7 +1594,8 @@ class GDBUser(Resource):
                     total_votes = int(hsh1[key]["interests"]) + int(hsh2[key]["interests"])
                 else:
                     total_votes = int(hsh1[key]["interests"])
-                hshOutput[key].update({"interests": total_votes})
+                if key in hshOutput:
+                    hshOutput[key].update({"interests": total_votes})
 
             # for key in hsh1:
             #     hshOutput[key].update(hsh1[key])
@@ -1672,56 +1616,52 @@ class GDBUser(Resource):
         # friend_occasion_create_dt
         # friend_occasion_update_dt
 
-    def add_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, occasion_date, occasion_timezone, status,
+    def add_occasion(self, user_id, friend_circle_id, occasion_id, occasion_date, occasion_timezone, status,
                      output_hash):
         try:
             print("Inside the add occasion function")
+            friend_occasion = None
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
             select_occasion = " MATCH (a:User)-[r:OCCASION]" \
                               "->(f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})" \
                               "<-[x:IS_MAPPED]-(b:occasion{occasion_id:$occasion_id_}) " \
                               " WHERE (a.user_id = $user_id_ or a.linked_user_id = $user_id_)" \
-                              " RETURN count(f.friend_circle_id) as friend_occasion "
-            result = txn.run(select_occasion, user_id_=str(user_id), friend_id_=str(friend_id),
+                              " RETURN f.friend_circle_id as friend_circle_id "
+            result = txn.run(select_occasion, user_id_=str(user_id),
                              friend_circle_id_=str(friend_circle_id), occasion_id_=occasion_id)
+            for record in result:
+                friend_occasion = record["friend_circle_id"]
+            if friend_occasion is None:
+                query = " CREATE (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_, " \
+                        "occasion_date:$occasion_date_, occasion_timezone:$occasion_timezone, created_dt:$created_dt_, friend_occasion_status:$friend_occasion_status_}) " \
+                        " WITH f " \
+                        " MATCH(a:User WHERE (a.user_id = $user_id_)), " \
+                        " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
+                        " (b:occasion{occasion_id:$occasion_id_}) " \
+                        " MERGE (a)-[:OCCASION]->(f)<-[:IS_MAPPED]-(b) " \
+                        " RETURN f.friend_circle_id as friend_circle_id"
 
-            if result is not None:
-                record = result.single()
-                if record["friend_occasion"] <= 0:
-                    query = " CREATE (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_, " \
-                            "occasion_date:$occasion_date_, occasion_timezone:$occasion_timezone, created_dt:$created_dt_, friend_occasion_status:$friend_occasion_status_}) " \
-                            " WITH f " \
-                            " MATCH(a:User WHERE (a.user_id = $user_id_)), " \
-                            " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
-                            " (b:occasion{occasion_id:$occasion_id_}) " \
-                            " MERGE (a)-[:OCCASION]->(f)<-[:IS_MAPPED]-(b) " \
-                            " RETURN f.friend_circle_id as friend_circle_id"
+                query_result = txn.run(query, created_dt_=self.get_datetime(),
+                                       friend_circle_id_=friend_circle_id,
+                                       user_id_=user_id,
+                                       occasion_id_=occasion_id,
+                                       occasion_date_=occasion_date,
+                                       occasion_timezone=occasion_timezone,
+                                       friend_occasion_status_=status,
+                                       updated_dt_=self.get_datetime()
+                                       )
 
-                    query_result = txn.run(query, created_dt_=self.get_datetime(),
-                                           friend_circle_id_=friend_circle_id,
-                                           user_id_=user_id,
-                                           occasion_id_=occasion_id,
-                                           occasion_date_=occasion_date,
-                                           occasion_timezone=occasion_timezone,
-                                           friend_occasion_status_=status,
-                                           updated_dt_=self.get_datetime()
-                                           )
+                for record in query_result:
+                    output_hash["friend_circle_id"] = record["friend_circle_id"]
 
-                    if query_result is None:
-                        current_app.logger.error("Unable to create occasion for ", user_id, friend_id)
-                        print("Unable to create occasion for ", user_id, friend_id)
-                        return False
-                    for record in query_result:
-                        output_hash["friend_circle_id"] = record["friend_circle_id"]
+                if "friend_circle_id" not in output_hash:
+                    current_app.logger.error("Friend occasion not created")
+                    txn.rollback()
+                    return False
 
-                    if "friend_circle_id" not in output_hash:
-                        current_app.logger.error("Friend occasion not created")
-                        txn.rollback()
-                        return False
-
-                    print("The  query is ", query_result.consume().query)
-                    print("The  parameters is ", query_result.consume().parameters)
+                print("The  query is ", query_result.consume().query)
+                print("The  parameters is ", query_result.consume().parameters)
 
                 txn.commit()
                 return True
@@ -1740,8 +1680,10 @@ class GDBUser(Resource):
             txn = driver.begin_transaction()
             status = 1
             occasion_id = None
-            check_occasion_query = "match (b:occasion{occasion_name:$occasion_name_, " \
-                                   "friend_circle_id:$friend_circle_id_}) return b.occasion_id as occasion_id"
+            check_occasion_query = "match (b:occasion) " \
+                                   "where b.friend_circle_id = $friend_circle_id_ and " \
+                                   " toLower(trim(b.occasion_name)) = $occasion_name_ " \
+                                   "return b.occasion_id as occasion_id"
 
             check_result = txn.run(check_occasion_query,
                                    occasion_name_ = custom_occasion_name.lower(),
@@ -1775,23 +1717,50 @@ class GDBUser(Resource):
                     txn.rollback()
                     current_app.logger.error("Something did not go right. Occasion insertion didnt work")
                     return False
-
-            insert_occasion_query = "MERGE (b:friend_occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
-                                    " ON CREATE SET " \
-                                    "b.created_dt =$created_dt_," \
-                                    "b.occasion_frequency=$occasion_frequency_," \
-                                    "b.occasion_date=$occasion_date_," \
-                                    "b.occasion_timezone=$occasion_timezone_," \
-                                    "b.friend_circle_id=$friend_circle_id_," \
-                                    "b.occasion_id = $occasion_id_ " \
-                                    " ON MATCH SET " \
-                                    "b.occasion_id = $occasion_id_, " \
-                                    "b.created_dt =$created_dt_," \
-                                    "b.occasion_frequency=$occasion_frequency_," \
-                                    "b.occasion_date=$occasion_date_," \
-                                    "b.occasion_timezone=$occasion_timezone_," \
-                                    "b.friend_circle_id=$friend_circle_id_ " \
-                                    " return b.occasion_id as occasion_id"
+            hsh["is_admin"] = 0
+            check_admin_query = "MATCH (f:friend_circle) " \
+                                " WHERE f.friend_circle_id = $friend_circle_id_ and" \
+                                " f.creator_id = $user_id_" \
+                                " return f.friend_circle_id as friend_circle_id "
+            result = txn.run(check_admin_query, friend_circle_id_ = friend_circle_id, user_id_ = creator_user_id)
+            for record in result:
+                hsh["is_admin"] = 1
+            if hsh["is_admin"] == 1:
+                insert_occasion_query = "MERGE (b:friend_occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
+                                        " ON CREATE SET " \
+                                        "b.created_dt =$created_dt_," \
+                                        "b.occasion_frequency=$occasion_frequency_," \
+                                        "b.occasion_date=$occasion_date_," \
+                                        "b.occasion_timezone=$occasion_timezone_," \
+                                        "b.friend_circle_id=$friend_circle_id_," \
+                                        "b.occasion_id = $occasion_id_, " \
+                                        "b.friend_occasion_status = 1" \
+                                        " ON MATCH SET " \
+                                        "b.occasion_id = $occasion_id_, " \
+                                        "b.created_dt =$created_dt_," \
+                                        "b.occasion_frequency=$occasion_frequency_," \
+                                        "b.occasion_date=$occasion_date_," \
+                                        "b.occasion_timezone=$occasion_timezone_," \
+                                        "b.friend_circle_id=$friend_circle_id_ " \
+                                        " return b.occasion_id as occasion_id"
+            else:
+                insert_occasion_query = "MERGE (b:friend_occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
+                                        " ON CREATE SET " \
+                                        "b.created_dt =$created_dt_," \
+                                        "b.occasion_frequency=$occasion_frequency_," \
+                                        "b.occasion_date=$occasion_date_," \
+                                        "b.occasion_timezone=$occasion_timezone_," \
+                                        "b.friend_circle_id=$friend_circle_id_," \
+                                        "b.occasion_id = $occasion_id_, " \
+                                        "b.friend_occasion_status = 0" \
+                                        " ON MATCH SET " \
+                                        "b.occasion_id = $occasion_id_, " \
+                                        "b.created_dt =$created_dt_," \
+                                        "b.occasion_frequency=$occasion_frequency_," \
+                                        "b.occasion_date=$occasion_date_," \
+                                        "b.occasion_timezone=$occasion_timezone_," \
+                                        "b.friend_circle_id=$friend_circle_id_ " \
+                                        " return b.occasion_id as occasion_id"
             insert_result = txn.run(insert_occasion_query, occasion_id_ =occasion_id,
                                     created_dt_ = self.get_datetime(), occasion_frequency_ = frequency ,
                                     occasion_timezone_ = occasion_timezone, occasion_date_ = occasion_date,
@@ -1852,7 +1821,42 @@ class GDBUser(Resource):
             print(e)
             return False
 
-    def approve_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, status, output_hash):
+    def get_unapproved_occasions(self, user_id, friend_circle_id, list_output: list):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH " \
+                    " (f:friend_occasion)<-[x:IS_MAPPED]-(o:occasion)," \
+                    " (b:User)-[:CIRCLE_CREATOR]->(fc:friend_circle)" \
+                    " where " \
+                    "f.friend_occasion_status = 0  and " \
+                    "f.friend_circle_id in $friend_circle_id_ and " \
+                    "f.friend_circle_id = fc.friend_circle_id and " \
+                    "fc.creator_id = $user_id_ " \
+                    " RETURN " \
+                    "f.friend_circle_id as friend_circle_id," \
+                    "o.occasion_name as occasion_name," \
+                    "f.occasion_date as occasion_date," \
+                    "o.occasion_id as occasion_id," \
+                    "fc.secret_friend_id as secret_friend_id," \
+                    "fc.secret_friend_name as secret_first_name," \
+                    "fc.secret_last_name as secret_last_name"
+
+            result = driver.run(query,
+                             friend_circle_id_=friend_circle_id,
+                             user_id_ = user_id)
+            for record in result:
+                list_output.append(record.data())
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print(e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print(e)
+            return False
+
+    def approve_occasion(self, user_id, friend_circle_id, occasion_id, status, output_hash):
         try:
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
@@ -1863,8 +1867,8 @@ class GDBUser(Resource):
                     " RETURN f.friend_circle_id as friend_circle_id"
 
             result = txn.run(query,
-                             friend_id_=friend_id,
                              friend_circle_id_=friend_circle_id,
+                             friend_id_ = user_id,
                              status_=status,
                              occasion_id_=occasion_id,
                              updated_dt_=self.get_datetime())
@@ -1872,14 +1876,14 @@ class GDBUser(Resource):
                 for record in result:
                     output_hash["friend_circle_id"] = record["friend_circle_id"]
             else:
-                current_app.logger.error("Unable to approve the vote for ", user_id, friend_id, friend_circle_id)
-                print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+                current_app.logger.error("Unable to approve the vote for ", user_id, friend_circle_id)
+                print("Unable to insert the vote for ", user_id, friend_circle_id)
                 return False
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             if len(output_hash) <= 0:
-                current_app.logger.error("Unable to approve the vote for ", user_id, friend_id, friend_circle_id)
-                print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+                current_app.logger.error("Unable to approve the vote for ", user_id, friend_circle_id)
+                print("Unable to insert the vote for ", user_id, friend_circle_id)
                 txn.rollback()
                 return False
 
@@ -1901,15 +1905,30 @@ class GDBUser(Resource):
             query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
                     " WHERE " \
                     " f.friend_circle_id = $friend_circle_id_ and " \
+                    " f.friend_occasion_status = 1 and " \
                     " b.status_id = 1 " \
                     " RETURN a.user_id as user_id, f.occasion_date as occasion_date , " \
-                    "f.occasion_id as occasion_id, b.occasion_name as occasion_name"
+                    "f.occasion_id as occasion_id, b.occasion_name as occasion_name ," \
+                    "b.friend_circle_id as custom_friend_circle_id," \
+                    "b.occasion_frequency as occasion_frequency"
             result = driver.run(query,
                                 friend_circle_id_=friend_circle_id)
-            if result is None:
-                loutput = None
+            hsh = {}
             for record in result:
-                loutput.append(record.data())
+                hsh["occasion_id"] = record["occasion_id"]
+                hsh["occasion_date"] = record["occasion_date"]
+                hsh["occasion_frequency"] = record["occasion_frequency"]
+                hsh["occasion_name"] = record["occasion_name"]
+                loutput.append(hsh)
+
+            hsh_occasion = {}
+            next_occasion = []
+            for occasion in loutput:
+                if not self.calculate_next_occasion(occasion["occasion_date"], occasion["occasion_frequency"], hsh_occasion):
+                    current_app.logger.error("Unable to get the next occasion data for " +  occasion["custom_friend_circle_id"])
+                    return False
+                occasion.update(hsh_occasion)
+
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -1917,6 +1936,7 @@ class GDBUser(Resource):
             current_app.logger.error(e.message)
             print(e.message)
             return False
+
 
     def get_occasion_names(self, list_output, friend_circle_id = None):
         try:
@@ -2018,7 +2038,7 @@ class GDBUser(Resource):
                     " r.value_timezone = $value_timezone_" \
                     " RETURN b.friend_circle_id as friend_circle_id"
 
-            result = driver.run(query, user_id_=user_id, friend_id_=friend_id, friend_circle_id_=friend_circle_id,
+            result = driver.run(query, user_id_=user_id, friend_circle_id_=friend_circle_id,
                                 occasion_id_=occasion_id,
                                 value_=value, value_timezone_=value_timezone, status_=flag,
                                 updated_dt_=self.get_datetime(),
@@ -2046,9 +2066,6 @@ class GDBUser(Resource):
                     " WHERE f.friend_circle_id = $friend_circle_id_ " \
                     " RETURN a.user_id as user_id,  r.status as status, r.value as value, b.occasion_id as occasion_id "
             result = driver.run(query, friend_circle_id_=friend_circle_id)
-            if result is None:
-                current_app.logger.error("Houston we have a problem. No votes")
-                loutput = None
             for record in result:
                 loutput.append(record.data())
             return True
@@ -2061,3 +2078,68 @@ class GDBUser(Resource):
     #  "location":"country", "age_lower" : 45, "age_upper": 43, "price_upper": 3, "price_lower": 54, "gender": "M",
     #  "color": [red,blue, white], "category_relevance" : [3,4,5], uniqueness index: [1..10]
     # )
+
+    def calculate_next_occasion(self, occasion_date: str, frequency: str, hsh_occasion: dict):
+        try:
+            utc_now_dt = datetime.now(tz=pytz.UTC)
+            formatted_datetime = utc_now_dt.strftime("%d-%m-%Y %H-%M-%S")
+            current_date_time = datetime.strptime(formatted_datetime, "%d-%m-%Y %H-%M-%S")
+            new_occasion_date = re.sub("/","-",occasion_date) + " 00:00:00"
+
+            try:
+                formatted_occasion_date = datetime.strptime(new_occasion_date, "%d-%m-%Y %H:%M:%S")
+            except ValueError as ex:
+                    hsh_occasion["message"] = "Invalid date"
+                    hsh_occasion["days_left"] = -1
+                    hsh_occasion["next_occasion_date"] = "NA"
+                    return False
+
+            diff = relativedelta(current_date_time.date(), formatted_occasion_date.date()).days
+
+            #Check if occasion date is in the future or past
+
+            days_difference = current_date_time.date() - formatted_occasion_date.date()
+            if days_difference.days < 0: # it is in the future
+                hsh_occasion["days_left"] = days_difference.days
+                hsh_occasion["next_occasion_date"] = occasion_date
+                hsh_occasion["message"] = "NA"
+            elif days_difference.days > 0: # it is in the past
+                if frequency == "Every Year":
+                    try:
+                        delta1 = datetime(current_date_time.year, formatted_datetime.month, formatted_occasion_date.day)
+                    except ValueError as e: #This is to handle leap year and Feb 29th
+                        delta1 = datetime(current_date_time.year, formatted_datetime.month + 1, 1)
+                        hsh_occasion["message"] = "Birth date may not be accurate given the leap year"
+                    try:
+                        delta2 = datetime(current_date_time.year + 1, formatted_datetime.month, formatted_occasion_date.day)
+                    except ValueError as e:
+                        delta2 = datetime(current_date_time.year + 1, formatted_datetime.month + 1, 1)
+                        hsh_occasion["message"] = "Birth date may not be accurate given the leap year"
+
+                    days_left = ((delta1 if delta1 > current_date_time else delta2) - current_date_time).days
+                    hsh_occasion["days_left"] = days_left
+                    hsh_occasion["next_occasion_date"] = delta1
+                    hsh_occasion["message"] = "NA" if "message" not in hsh_occasion else hsh_occasion["message"]
+                if frequency == "Every Month":
+                    next_occasion_date = formatted_occasion_date + relativedelta(months=1)
+                    days_left = current_date_time.date() - next_occasion_date.date()
+                    hsh_occasion["days_left"] = days_left.days
+                    hsh_occasion["next_occasion_date"] = next_occasion_date.date()
+                    hsh_occasion["message"] = "NA"
+                if frequency == "Every Week":
+                    next_occasion_date = formatted_occasion_date + relativedelta(weeks=1)
+                    days_left = current_date_time.date() - next_occasion_date.date()
+                    hsh_occasion["days_left"] = days_left.days
+                    hsh_occasion["next_occasion_date"] = next_occasion_date.date()
+                    hsh_occasion["message"] = "NA"
+
+            else: # it is now
+                hsh_occasion["days_left"] = 0
+                hsh_occasion["next_occasion_date"] = formatted_occasion_date.date()
+                hsh_occasion["message"] = "Congrats! It is a happy day today"
+
+            return True
+        except Exception as e:
+            print ("The error is ", e)
+            current_app.logger.error("The error is " + str(e))
+            return False
