@@ -338,7 +338,7 @@ class FriendListDB:
             else:
                 for record in result:
                     print("The record is ", record["user_id"])
-                    loutput[record["friend_id"] + record["phone_number"]] = record
+                    loutput[str(record["friend_id"]) + str(record["phone_number"])] = record
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -516,6 +516,7 @@ class FriendListDB:
             if admin_flag == 1:
                 fquery = "MATCH  (n:friend_list), (fc:friend_circle) " \
                          " WHERE n.user_id = $user_id_ " \
+                         " and n.friend_id = $friend_id_ " \
                          " AND fc.friend_circle_id = $friend_circle_id_ " \
                          " CREATE (n)-[:CONTRIBUTOR]->(fc) " \
                          " RETURN fc.friend_circle_id as friend_circle_id"
@@ -630,7 +631,7 @@ class FriendListDB:
                     print("Unable to insert the email address into friend circle " + hshuser["phone_number"])
                     return False
                 if hshuser["referred_user_id"] is None:
-                    key = hshuser["referrer_user_id"] + hshuser["phone_number"]
+                    key = str(hshuser["referrer_user_id"]) + str(hshuser["phone_number"])
                     referred_user_id = output_hash[key]["user_id"]
                 hshuser["user_id"] = referred_user_id  # Need this for mongo insert
                 objMongo = MongoDBFunctions()
@@ -721,6 +722,10 @@ class FriendListDB:
             user_output["referred_user_id"] = hshuser["referred_user_id"]
             user_output["approval_status"] = 0
             user_output["source_type"] = "DIRECT"
+            if "age" in hshuser :
+                if hshuser["age"] is not None:
+                    user_output["age"] = hshuser["age"]
+
             if friend_exists == "N":
                 if not self.insert_friend_by_id(user_output, txn, output_hash):
                     txn.rollback()
@@ -757,7 +762,7 @@ class FriendListDB:
             print("The error is ", e)
             return False
 
-    def insert_friend_wrapper(self, hshuser, output_hash):
+    def insert_friend_wrapper(self, hshuser, admin_flag, output_hash):
         try:
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
@@ -769,7 +774,7 @@ class FriendListDB:
                     current_app.logger.error("Unable to insert this user as a friend " + hshuser["email_address"])
                     print("Unable to insert this user as a friend " + hshuser["email_address"])
                     return False
-                key = hshuser["referrer_user_id"] + hshuser["phone_number"]
+                key = str(hshuser["referrer_user_id"]) + str(hshuser["phone_number"])
                 hshuser["referred_user_id"] = output_hash[key]["user_id"]
                 hshuser["user_id"] = hshuser["referred_user_id"]
                 objMongo = MongoDBFunctions()
@@ -784,12 +789,30 @@ class FriendListDB:
             hshuser["user_type"] = "New"
             hshuser["comm_type"] = "Email"
 
-            if not objMongo.insert_approval_queue(hshuser):
-                txn.rollback()
-                current_app.logger.error(
-                    "Error in inserting the record into approval  queue for " + hshuser["email_address"])
-                print("Error in inserting the record into email user queue for " + hshuser["email_address"])
-                return False
+            loutput = {}
+
+            if admin_flag == 1:
+                fquery = "MATCH  (n:friend_list), (fc:friend_circle) " \
+                         " WHERE n.user_id = $user_id_ " \
+                         " and n.friend_id = $friend_id_ " \
+                         " AND fc.friend_circle_id = $friend_circle_id_ " \
+                         " CREATE (n)-[:CONTRIBUTOR]->(fc) " \
+                         " RETURN fc.friend_circle_id as friend_circle_id"
+
+                result = txn.run(fquery, user_id_=hshuser["referred_user_id"], friend_id_=hshuser["referrer_user_id"],
+                                 friend_circle_id_=hshuser["friend_circle_id"], created_dt_=self.get_datetime())
+                for record in result:
+                    loutput["friend_circle_id"] = record["friend_circle_id"]
+
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
+            else:
+                if not objMongo.insert_approval_queue(hshuser):
+                    txn.rollback()
+                    current_app.logger.error(
+                        "Error in inserting the record into approval  queue for " + hshuser["email_address"])
+                    print("Error in inserting the record into email user queue for " + hshuser["email_address"])
+                    return False
             txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -1116,11 +1139,9 @@ class FriendListDB:
             # Here the assumption is the user cannot set relationship unless registered w
             driver = NeoDB.get_session()
 
-            query = "MATCH (fl:friend_list)<-[:CONTRIBUTOR]-(fc:friend_circle) " \
-                    " SET approval_status = $approval_status_, " \
-                    " updated_dt = $updated_dt_" \
-                    " WHERE fl.phone_number = $phone_number_ and " \
-                    " fc.friend_circle_id = $friend_circle_id_ " \
+            query = "MATCH (fl:friend_list{phone_number:$phone_number_})-[:CONTRIBUTOR]->(fc:friend_circle{friend_circle_id:$friend_circle_id_}) " \
+                    " SET fl.approval_status = $approval_status_, " \
+                    " fl.updated_dt = $updated_dt_" \
                     " RETURN fc.friend_circle_id as friend_circle_id, " \
                     " fl.linked_user_id as linked_user_id"
 
@@ -1146,22 +1167,24 @@ class FriendListDB:
             try:
                 # Here the assumption is the user cannot set relationship unless registered w
                 driver = NeoDB.get_session()
-                query = "MATCH (fl:friend_list)<-[:CONTRIBUTOR]-(fc:friend_circle) " \
+                query = "MATCH (fl:friend_list)-[:CONTRIBUTOR]->(fc:friend_circle) " \
                         " WHERE fl.phone_number = $phone_number_ and " \
                         " fl.approval_status = 0 " \
                         " RETURN fc.friend_circle_id as friend_circle_id, " \
                         " fl.linked_user_id as linked_user_id, " \
                         " fc.friend_circle_name as friend_circle_name, " \
-                        " fc.secret_first_name as secret_first_name ," \
+                        " fc.secret_friend_name as secret_first_name ," \
                         " fc.secret_last_name as secret_last_name, " \
                         " fc.secret_friend_id as secret_friend_id"
 
                 result = driver.run(query,
                                     phone_number_=phone_number)
-                print("The  query is ", result.consume().query)
-                print("The  parameters is ", result.consume().parameters)
+
                 for record in result:
                     list_output.append(record.data())
+
+                print("The  query is ", result.consume().query)
+                print("The  parameters is ", result.consume().parameters)
                 return True
             except neo4j.exceptions.Neo4jError as e:
                 print("THere is a syntax error", e.message)

@@ -6,6 +6,9 @@ from flask_restful import Resource
 from app.model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
 from app.service.general import SiteGeneralFunctions
+from datetime import datetime, tzinfo, timedelta
+from dateutil.relativedelta import relativedelta
+
 import json
 
 #are
@@ -130,7 +133,7 @@ class ManageFriendCircle(Resource):
                     return {"status" : "The referrer is not part of the friend circle. Something is wrong"}, 400
 
                 if hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "N" and hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "N":
-                        return {"status": "The referrer is neither a circle creator nor a contributore"}, 400
+                        return {"status": "The referrer is neither a circle creator nor a contributor"}, 400
 
                 if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
                     is_admin = 1
@@ -156,24 +159,24 @@ class ManageFriendCircle(Resource):
                 friend_record_exists = 0
                 referred_user_id = None
 
-                if not objGDBUser.get_user_role_as_contrib_secret_friend(user_info["email_address"], user_info["referrer_user_id"], user_info["friend_circle_id"], hshOutput):
+                if not objGDBUser.get_user_role_as_contrib_secret_friend(user_info["phone_number"], user_info["referrer_user_id"], user_info["friend_circle_id"], hshOutput):
                     current_app.logger.error("Unablet to get the roles for " + user_info["email_address"])
                     return {"status" : "Unable to check the roles of the user"}, 400
 
-                if user_info["email_address"] in hshOutput:
+                if user_info["phone_number"] in hshOutput:
 
-                    if hshOutput[user_info["email_address"]]["contrib_flag"] == "Y":
+                    if hshOutput[user_info["phone_number"]]["contrib_flag"] == "Y":
                         return {"status": "User is already a contributor to the friend circle "}, 400
 
-                    if hshOutput[user_info["email_address"]]["secret_friend_flag"] == "Y":
+                    if hshOutput[user_info["phone_number"]]["secret_friend_flag"] == "Y":
                         return {"status": " recommended user is the secret friend "}, 400
 
-                    if hshOutput[user_info["email_address"]]["circle_creator_flag"] == "Y":
+                    if hshOutput[user_info["phone_number"]]["circle_creator_flag"] == "Y":
                         return {"status": " creator cannot be the contributor "}, 400
 
-                    if hshOutput[user_info["email_address"]]["user_id"] is not None and hshOutput[user_info["email_address"]]["friend_id"] is not None:
+                    if hshOutput[user_info["phone_number"]]["user_id"] is not None and hshOutput[user_info["phone_number"]]["friend_id"] is not None:
                         friend_record_exists = 1
-                        referred_user_id = hshOutput[user_info["email_address"]]["user_id"]
+                        referred_user_id = hshOutput[user_info["phone_number"]]["user_id"]
 
                 if not objGDBUser.get_user_roles_for_referrer( user_info["referrer_user_id"],user_info["friend_circle_id"], hshOutput):
                     current_app.logger.error("Unablet to get the roles for " + user_info["referrer_user_id"])
@@ -224,11 +227,15 @@ class ManageFriendCircle(Resource):
                     user_info["linked_status"] = 0
                     user_info["linked_user_id"] = None
                     user_info["approval_status"] = 0
-                if not objFriend.insert_friend_wrapper(user_info, output):
+                if not objFriend.insert_friend_wrapper(user_info, is_admin, output):
                     current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
                     print("Unable to insert friend into the friend list " + user_info["email_address"])
                     return {"status": "Unable to insert friend into the friend list " + user_info["email_address"]}, 400
-                return {"status" : "Successfully added. The user has to be approved by the admin"}, 200
+
+                if is_admin:
+                    return {"Status": "User added. They need to accept the invite and join"}, 200
+                else:
+                    return {"status" : "Successfully added. The user has to be approved by the admin"}, 200
             if request_id == 3:
                 output = {}
                 print ("Calling request 3 function")
@@ -417,8 +424,6 @@ class InterestManagement(Resource):
         objGDBUser = GDBUser()
         loutput = []
 
-
-
         objCategory = CategoryManagementDB()
 
         if request_id == 1:
@@ -454,7 +459,7 @@ class InterestManagement(Resource):
             #     current_app.logger.error("gender cannot be none and it is")
             #     return {"status" : "Failure: Unable to get the gender"}, 400
 
-            if not SiteGeneralFunctions.get_age_range(age, hsh):
+            if not SiteGeneralFunctions.get_age_range(int(age), hsh):
                 current_app.logger.error("Unable to get age range")
                 return {"status": "Failure: Unable to get age range"}, 400
 
@@ -528,7 +533,7 @@ class OccasionManagement(Resource):
         status = 0
         if request_id == 1:  # add occasion
             print ("Inside occasion request 1")
-            if objGDBUser.add_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, occasion_date,occasion_timezone, status, output_hash):
+            if objGDBUser.add_occasion(creator_user_id, friend_circle_id, occasion_id, occasion_date,occasion_timezone, status, output_hash):
                 return {"status": "Success"}, 200
             else:
                 print ("Failure in adding occasion")
@@ -540,7 +545,7 @@ class OccasionManagement(Resource):
                 return {"Failure:": "Error in voting for the occasion"}, 500
         if request_id == 3:
             status = 1
-            if objGDBUser.approve_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, status, output_hash):
+            if objGDBUser.approve_occasion(creator_user_id, friend_circle_id, occasion_id, status, output_hash):
                 return {"status" : "Success"}, 200
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500
@@ -549,7 +554,7 @@ class OccasionManagement(Resource):
             hsh = {}
             if occasion_name is None or friend_circle_id is None or frequency is None or creator_user_id is None or occasion_date is None or value_timezone is None:
                 return {"status" :"Failure: Insufficient parameters"}
-            if not objGDBUser.create_custom_occasion(occasion_name, friend_circle_id, frequency, creator_user_id, occasion_date, value_timezone, hsh):
+            if not objGDBUser.create_custom_occasion(occasion_name, friend_circle_id, frequency, creator_user_id, occasion_date, occasion_timezone, hsh):
                 return {"status" : "Failure: Unable to create custom occasion"}, 400
             return {"occasion_id": json.loads(json.dumps(hsh)) }, 200
 
@@ -586,25 +591,21 @@ class OccasionManagement(Resource):
         objGDBUser = GDBUser()
         loutput1 = []
         loutput2 = []
+        data = {}
         if request_id == 1:  # request_id = 1 means get the occasion by friend circle id
-            #if objGDBUser.get_occasion(friend_circle_id, loutput1) and objGDBUser.get_occasion_votes(friend_circle_id,loutput):
-            if not objGDBUser.get_occasion_votes(friend_circle_id,loutput2):
-                return{"status":"Failure"}, 400
-            if objGDBUser.get_occasion(friend_circle_id, loutput1):
-                loutput1.append(loutput2)
-                data = json.dumps(loutput1)
-                #final_json = data.replace("\\", "")
-                print ("Final json is", data)
-                return {"occasions", data}, 200
-            else:
-                return {"status:": "Error in getting the occasions. try again"}, 500
+            # if not objGDBUser.get_occasion_votes(friend_circle_id,loutput2):
+            #     return{"status":"Failure"}, 400
+            if not objGDBUser.get_occasion(friend_circle_id, loutput1):
+                return {"status": "Failure"}, 400
+            #data["occasion_votes"] = loutput2
+            return {"occasions": json.loads(json.dumps(loutput1))}, 200
 
         if request_id == 3:
             list_output = []
             if not objGDBUser.get_occasion_names(list_output, friend_circle_id):
                 current_app.logger.error("Unable to get occasion names")
                 return {"status" : "Failure is extracting all the occasion names"}, 400
-            return {"occasion_name" : json.dumps(list_output)}, 200
+            return {"occasion_name" : json.loads(json.dumps(list_output))}, 200
 
 class FriendAttributes(Resource):
     def post(self):
