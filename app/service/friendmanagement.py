@@ -14,9 +14,6 @@ import json
 #are
 
 class ManageFriendCircle(Resource):
-    FAKE_USER_TYPE = 1
-    FAKE_USER_PASSWORD = "TeX54Esa"
-
    # @jwt_required()
     def post(self):
         try:
@@ -147,7 +144,7 @@ class ManageFriendCircle(Resource):
                 else:
                     current_app.logger.error("Reffered friend is successfully added to the queue and will require circle creator help" + user_info["referred_user_id"])
 
-                return   {"status": json.dumps(output)}, 200
+                return {"status": json.dumps(output)}, 200
 
             if request_id == 2:
                 # This is an invitation recommended for a non existing friend circle member by an existing member
@@ -331,11 +328,14 @@ class ManageFriendCircle(Resource):
             else:
                 return {"status":"Failure"}, 400
         if request_id == 2:
-            if not objGDBUser.get_friend_circles(user_id, output):
+            hshOutput = {}
+            list_output = []
+            if not objGDBUser.get_user_summary(user_id,hshOutput,txn=None,list_output = list_output):
+            #if not objGDBUser.get_friend_circles(user_id, output):
                 print('There is an issue getting friend_circle_data for ', user_id)
                 return {"Erros": "unable to get friend circle information. retry"}, 500
 
-            return {'data': json.loads(json.dumps(output))}, 200
+            return {'data': json.loads(json.dumps(list_output))}, 200
 
         if request_id == 3:
             objFriend = FriendListDB()
@@ -376,7 +376,6 @@ class InterestManagement(Resource):
                 return {"status":"failure"}, 500
 
             referred_user_id = content["referred_user_id"] if "referred_user_id" in content else None
-
             friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
 
             if referred_user_id is None  or friend_circle_id is None:
@@ -474,25 +473,21 @@ class InterestManagement(Resource):
             # get all interests by friend circle
             if objGDBUser.get_category_interest(friend_circle_id, loutput):
                 print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-                data = json.loads(json.dumps(loutput))
             else:
                 return {"status": "failure"}, 400
             loutput1 = []
             if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
                 print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-                loutput.append(loutput1)
-                if len(loutput1) > 0:
-                    data = json.dumps(loutput)
             else:
                 return {"status": "failure"}, 400
-            return {'categories': data}, 200
+            return {'categories': json.loads(json.dumps(loutput)), "subcategories":json.loads(json.dumps(loutput1))}, 200
 
         if request_id == 4: # get the recently added interest for a given friend_circle
             objGDBUser = GDBUser()
             list_output = []
             if objGDBUser.get_recently_added_interest(friend_circle_id, list_output):
                 return {"status" : "Failure in getting the recently added interest"}, 400
-            return {"interest": json.dumps(list_output)}, 200
+            return {"interest": json.dumps(json.loads(list_output))}, 200
 
 # Here is how the occasion management has been implemented.
 
@@ -539,7 +534,7 @@ class OccasionManagement(Resource):
                 print ("Failure in adding occasion")
                 return {"Status:": "Failure"}, 500
         if request_id == 2:  # vote for occasion
-            if objGDBUser.vote_occasion(contributor_user_id, creator_user_id, friend_circle_id, occasion_id, flag, value, value_timezone, output_hash):
+            if objGDBUser.vote_occasion( creator_user_id, friend_circle_id, occasion_id, flag, value, value_timezone, output_hash):
                 return {"status" : "Success"}, 200
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500
@@ -588,6 +583,7 @@ class OccasionManagement(Resource):
     def get(self):
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         request_id = request.args.get("request_id", type=int)
+        user_id = request.args.get("user_id", type=str)
         objGDBUser = GDBUser()
         loutput1 = []
         loutput2 = []
@@ -595,10 +591,19 @@ class OccasionManagement(Resource):
         if request_id == 1:  # request_id = 1 means get the occasion by friend circle id
             # if not objGDBUser.get_occasion_votes(friend_circle_id,loutput2):
             #     return{"status":"Failure"}, 400
-            if not objGDBUser.get_occasion(friend_circle_id, loutput1):
+            l_friend_circle = []
+            l_friend_circle.append(friend_circle_id)
+            if not objGDBUser.get_occasion(l_friend_circle, user_id, loutput1):
                 return {"status": "Failure"}, 400
             #data["occasion_votes"] = loutput2
             return {"occasions": json.loads(json.dumps(loutput1))}, 200
+
+        if request_id == 2: # Get all occasions by user
+            loutput = []
+            if not objGDBUser.get_occasion_by_user(user_id, loutput):
+                print ("Unable to get occasions for user" + str(user_id))
+                return {"status": "Failure. Unable to get occasions by user"}, 400
+            return {"occasions": json.loads(json.dumps(loutput))}
 
         if request_id == 3:
             list_output = []

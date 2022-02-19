@@ -142,7 +142,6 @@ class SearchDB:
             if "age_floor" in inputs:
                 #range_string =  {"range": {"gte": inputs["age_floor"],"path": "age_lo"}}
                 age_floor_hash = {}
-
                 age_floor_hash["range"] = {}
                 age_floor_hash["range"]["gte"] = inputs["age_floor"]
                 age_floor_hash["range"]["path"] = "age_lo"
@@ -154,6 +153,7 @@ class SearchDB:
                 age_ceiling_hash["range"]["lte"] = inputs["age_ceiling"]
                 age_ceiling_hash["range"]["path"] = "age_hi"
 
+
             #{'range': {'path': 'created_dt','gt': myDatetime}}
 
             date_crieteria_hash = {}
@@ -162,6 +162,19 @@ class SearchDB:
             date_crieteria_hash["path"] = "created_dt"
 
             final_filter_list = [ age_floor_hash, age_ceiling_hash]
+
+            if "price_lo" in inputs:
+                price_lo_hash = {}
+                price_lo_hash["range"] = {}
+                price_lo_hash["range"]["gte"] = inputs["price_lo"]
+                price_lo_hash["range"]["path"] = "price"
+                final_filter_list.append(price_lo_hash)
+            if "price_hi" in inputs:
+                price_hi_hash = {}
+                price_hi_hash["range"] = {}
+                price_hi_hash["range"]["lte"] = inputs["price_hi"]
+                price_hi_hash["range"]["path"] = "price"
+                final_filter_list.append(price_hi_hash)
 
 
             if 'color' in inputs and len(inputs["color"]) > 0:
@@ -181,13 +194,12 @@ class SearchDB:
                 else:
                     must_class_hash = category_hash
                     category_flag = 1
-
             if "subcategory" in inputs and len(inputs["subcategory"]) > 0:
                 subcategory_hash = {}
                 subcategory_hash["text"] = {}
                 subcategory_hash["text"]["query"] = inputs["subcategory"]
                 subcategory_hash["text"]["path"] = "subcategory"
-                if occasion_flag == 1 and category_flag == 1:
+                if occasion_flag == 1 or category_flag == 1:
                     final_filter_list.append(subcategory_hash)
                 else:
                     must_class_hash = subcategory_hash
@@ -206,7 +218,6 @@ class SearchDB:
             pipeline = [search_string, sort_string]
             print ("The pipeline query is", pipeline)
             user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
-
             result = user_collection.aggregate(pipeline)
 
             """
@@ -268,45 +279,52 @@ class SearchDB:
         try:
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
-            merge_sql = "MERGE (b:product{product_id:$product_id_}) return count(b.product_id) as prod_count"
-            result = txn.run(merge_sql, product_id_ = inputs["product_id"])
-            if result is not None:
-                print("The  query is ", result.consume().query)
-                print("The  parameters is ", result.consume().parameters)
-                query = "MATCH (b:product{product_id:$product_id_}) ," \
-                        " (a:friend_list{user_id:$user_id_, friend_id:$friend_id_}) " \
-                        " MERGE (a)-[r:VOTE_PRODUCT]->(b) " \
-                        " ON MATCH " \
-                        " SET r.value = $vote_, r.comment = $comment_, r.updated_dt = $updated_dt_ " \
-                        " ON CREATE " \
-                        " SET r.value = $vote_, r.comment = $comment_, r.created_dt = $created_dt_, r.occasion_name=$occasion_name_, " \
-                        " r.friend_circle_id = $friend_circle_id_, r.occasion_year = $occasion_year_" \
-                        " RETURN b.product_id, a.user_id"
+            create_product_query = "MERGE (b:product{product_id:$product_id_}) " \
+                                   " ON CREATE set b.created_dt = $created_dt_ " \
+                                   " RETURN b.product_id"
+            presult = txn.run(create_product_query, product_id_ = inputs["product_id"], created_dt_ = self.get_datetime())
 
-                resultX = txn.run(query, user_id_=inputs["user_id"], product_id_=inputs["product_id"], vote_=inputs["vote"],
-                                    friend_circle_id_=inputs["friend_circle_id"], comment_=inputs["comment"],
-                                    occasion_name_=inputs["occasion_name"], occasion_year_=inputs["occasion_year"], friend_id_ = inputs["friend_id"],
-                                    created_dt_ = self.get_datetime(), updated_dt_ = self.get_datetime())
+            b_product_flga = 0
+            for row in presult:
+                b_product_flag = 1
 
-                counter = 0
-                for record in resultX:
-                    print("The record is ", record["a.user_id"])
-                    counter = 1
-                print("The  query is ", resultX.consume().query)
-                print("The  parameters is ", resultX.consume().parameters)
-                if counter ==0:
-                    txn.rollback()
-                    current_app.logger.error("Relationship between the user and product is not created " + inputs["user_id"] )
-                    return False
-            else:
+            if not b_product_flag:
                 txn.rollback()
-                current_app.logger.error("Unable to find the product to vote" + inputs["product_id"])
+                current_app.logger.error("Unable to insert or update the product")
+                return False
+
+
+            query = "MATCH (b:product{product_id:$product_id_}) ," \
+                    " (a:User{user_id:$user_id_}) " \
+                    " MERGE (a)-[r:VOTE_PRODUCT]->(b) " \
+                    " ON MATCH " \
+                    " SET r.value = $vote_, r.comment = $comment_, r.updated_dt = $updated_dt_ " \
+                    " ON CREATE " \
+                    " SET r.value = $vote_, r.comment = $comment_, r.created_dt = $created_dt_, r.occasion_name=$occasion_name_, " \
+                    " r.friend_circle_id = $friend_circle_id_, r.occasion_year = $occasion_year_" \
+                    " RETURN b.product_id, a.user_id"
+
+            resultX = txn.run(query, user_id_=inputs["user_id"], product_id_=inputs["product_id"], vote_=inputs["vote"],
+                                friend_circle_id_=inputs["friend_circle_id"], comment_=inputs["comment"],
+                                occasion_name_=inputs["occasion_name"], occasion_year_=inputs["occasion_year"],
+                                created_dt_ = self.get_datetime(), updated_dt_ = self.get_datetime())
+
+            counter = 0
+            for record in resultX:
+                print("The record is ", record["a.user_id"])
+                counter = 1
+            print("The  query is ", resultX.consume().query)
+            print("The  parameters is ", resultX.consume().parameters)
+            if counter ==0:
+                current_app.logger.error("Relationship between the user and product is not created " + inputs["user_id"] )
+                txn.rollback()
                 return False
             txn.commit()
+
             return True
         except neo4j.exceptions.Neo4jError as e:
-            txn.rollback()
             current_app.logger.error(e.message)
+            txn.rollback()
             return False
 
 

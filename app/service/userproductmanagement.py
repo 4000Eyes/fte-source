@@ -1,6 +1,8 @@
 from flask import Response, request, current_app, jsonify, json
 from app.model.searchdb import SearchDB
 from app.model.gdbmethods import GDBUser
+from app.model.friendlistdb import FriendListDB
+from app.service.general import SiteGeneralFunctions
 from flask_restful import Resource
 from bson import json_util, ObjectId
 from flask_jwt_extended import jwt_required
@@ -11,24 +13,23 @@ import json
 class UserProductManagement(Resource):
     def get(self):
         try:
-            #print ("The json is", request.get_json(force=True))
-            #content = request.get_json(force=True)
-            content={}
-            #rere
 
+            content={}
 
             content["request_id"] = request.args.get("request_id",type=int)
-            content["product_id"] = []
             content["product_id"] = request.args.getlist("product_id", type=int)
-            print ("The values are", content["request_id"], content["product_id"])
-            content["age_floor"] = request.args.get("age_floor",type=int)
-            content["age_ceiling"] = request.args.get("age_ceiling", type=int)
             content["sort_order"] = request.args.get("sort_order",type=str)
             content["subcategory"] = request.args.getlist("subcategory_list")
             content["category"] = request.args.getlist("category_list")
             content["color"] = request.args.getlist("color_list")
             content["occasion"] = request.args.getlist("occasion_list")
-
+            content["friend_circle_id"] = request.args.get("friend_circle_id", type=str)
+            content["user_id"] = request.args.get("user_id", type=str)
+            content["occasion_name"] = request.args.get("occasion_name", type=str)
+            content["occasion_year"] = request.args.get("occasion_year", type=str)
+            content["comment"] = request.args.get("comment", type=str)
+            content["vote"] = request.args.get("vote", type=int)
+            content["age"] = request.args.get("age", type=str)
 
             print ("The values are", content["request_id"], content["product_id"])
             if content is None:
@@ -39,7 +40,7 @@ class UserProductManagement(Resource):
             output_list = []
             objSearch = SearchDB()
             objGDBUser = GDBUser()
-
+            objFriend = FriendListDB()
             if content["request_id"] == 1:
                 """
                 if "subcategory_list" in content:
@@ -51,6 +52,56 @@ class UserProductManagement(Resource):
                 if "occasion_list" in content:
                     content["occasion"] = "'%s'" % "','".join(content["occasion_list"])
                 """
+
+                hsh = {}
+                hage = {}
+                if content["friend_circle_id"] is not None:
+                    if not objGDBUser.get_friend_circle_attributes(content["friend_circle_id"], hsh):
+                        current_app.logger.error("Unable to get friend circle_attributes")
+                        return {"status": "Failure: Unable to get the age and gender from friend circle"}, 400
+                    age = hsh["age"]
+                    gender = hsh["gender"]
+                    if not SiteGeneralFunctions.get_age_range(int(age), hage):
+                        current_app.logger.error("Unable to get age range")
+                        return {"status": "Failure: Unable to get age range"}, 400
+                    content["age_floor"] = hage["lo"]
+                    content["age_ceiling"] = hage["hi"]
+
+                    lcat = []
+                    lsubcat = []
+
+                    if objGDBUser.get_category_interest(content["friend_circle_id"], lcat):
+                        print("successfully retrieved the interest categories for friend circle id:", content["friend_circle_id"])
+                    else:
+                        return {"status": "failure: Unable to get the categoriies for the friend circle id"}, 400
+                    if objGDBUser.get_subcategory_interest(content["friend_circle_id"], lsubcat):
+                        print("successfully retrieved the interest categories for friend circle id:", content["friend_circle_id"])
+                    else:
+                        return {"status": "failure: Unable to get subcategories for the friend circle id"}, 400
+                    if len(lcat) > 0:
+                        content["category"] = []
+                        for row in lcat:
+                            if row["category_id"] is not None:
+                                content["category"].append(row["category_id"])
+                    if len(lsubcat) > 0:
+                        content["subcategory"] = []
+                        for row in lsubcat:
+                            if row["subcategory_id"] is not None:
+                                content["subcategory"].append(row["subcategory_id"])
+
+                if content["age"] is not None:
+                    if not SiteGeneralFunctions.get_age_range(int(age), hage):
+                        current_app.logger.error("Unable to get age range")
+                        return {"status": "Failure: Unable to get age range"}, 400
+
+                    content["age_floor"] = hage["lo"]
+                    content["age_ceiling"] = hage["hi"]
+
+                if content["age"] is None  and content["friend_circle_id"] is None:
+                    #default
+                    content["age_floor"] = 20
+                    content["age_ceiling"] = 80
+
                 if "age_floor" not in content or \
                         "age_ceiling" not in content or \
                         "sort_order" not in content:
@@ -58,6 +109,7 @@ class UserProductManagement(Resource):
                         "Age floor , age ceiling, sort order are required for any search and one or more is missing")
                     print("Key attributes age floor, ceilinng, sort order is missing")
                     return {"status": "failure. missing key inputs age floor or age celing or sort order"}, 400
+
                 loutput = []
                 if objSearch.search_gemift_products(content, output_list):
                     print("The result is ", output_list)
@@ -130,8 +182,7 @@ class UserProductManagement(Resource):
                     "friend_circle_id" not in content or \
                     "comment" not in content or \
                     "occasion_name" not in content or \
-                    "occasion_year" not in content or \
-                    "friend_id" not in content:
+                    "occasion_year" not in content :
                     current_app.logger.error("one or more of the required parameters are missing ")
                     print("one or more of the required parameters are missing ")
                     return {"status", "one or more of the required parameters are missing "}, 400
