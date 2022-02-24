@@ -543,7 +543,7 @@ class OccasionManagement(Resource):
             if objGDBUser.approve_occasion(creator_user_id, friend_circle_id, occasion_id, status, output_hash):
                 return {"status" : "Success"}, 200
             else:
-                return {"Failure:": "Error in voting for the occasion"}, 500
+                return {"Failure:": "Error in voting for the occasion"}, 400
 
         if request_id == 4: # create custom occasion. This would require friend circle id, occasion_name, occasion_start_date, frequency,
             hsh = {}

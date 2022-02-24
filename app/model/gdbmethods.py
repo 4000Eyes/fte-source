@@ -1852,38 +1852,31 @@ class GDBUser(Resource):
     def approve_occasion(self, user_id, friend_circle_id, occasion_id, status, output_hash):
         try:
             driver = NeoDB.get_session()
-            txn = driver.begin_transaction()
             query = "MATCH " \
                     " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
                     " (b:User{user_id:$friend_id_})-[:CIRCLE_CREATOR]->(fc:friend_circle{friend_circle_id:$friend_circle_id_})" \
                     " set f.friend_occasion_status = $status_ , f.updated_dt = $updated_dt_" \
                     " RETURN f.friend_circle_id as friend_circle_id"
 
-            result = txn.run(query,
+            result = driver.run(query,
                              friend_circle_id_=friend_circle_id,
                              friend_id_ = user_id,
                              status_=status,
-                             occasion_id_=occasion_id,
+                             occasion_id_=str(occasion_id),
                              updated_dt_=self.get_datetime())
-            if result is not None:
-                for record in result:
-                    output_hash["friend_circle_id"] = record["friend_circle_id"]
-            else:
-                current_app.logger.error("Unable to approve the vote for ", user_id, friend_circle_id)
-                print("Unable to insert the vote for ", user_id, friend_circle_id)
-                return False
+
+            for record in result:
+                output_hash["friend_circle_id"] = record["friend_circle_id"]
+
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             if len(output_hash) <= 0:
                 current_app.logger.error("Unable to approve the vote for ", user_id, friend_circle_id)
                 print("Unable to insert the vote for ", user_id, friend_circle_id)
-                txn.rollback()
                 return False
 
-            txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
-            txn.rollback()
             current_app.logger.error(e.message)
             print(e.message)
             return False

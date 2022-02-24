@@ -136,7 +136,7 @@ class SearchDB:
                 occasions_hash = {}
                 occasions_hash["text"] = {}
                 occasions_hash["text"]["query"] = inputs["occasion"]
-                occasions_hash["text"]["path"] = "occasion"
+                occasions_hash["text"]["path"] = "occasion_id"
                 occasion_flag = 1
                 must_class_hash = occasions_hash
             if "age_floor" in inputs:
@@ -280,9 +280,13 @@ class SearchDB:
             driver = NeoDB.get_session()
             txn = driver.begin_transaction()
             create_product_query = "MERGE (b:product{product_id:$product_id_}) " \
-                                   " ON CREATE set b.created_dt = $created_dt_ " \
+                                   " ON CREATE set b.created_dt = $created_dt_ , b.product_title = $product_title_," \
+                                   " b.price = $price_" \
                                    " RETURN b.product_id"
-            presult = txn.run(create_product_query, product_id_ = inputs["product_id"], created_dt_ = self.get_datetime())
+            presult = txn.run(create_product_query, product_id_ = inputs["product_id"],
+                              product_title_ = inputs["product_title"],
+                              price_ = inputs["price"],
+                              created_dt_ = self.get_datetime())
 
             b_product_flga = 0
             for row in presult:
@@ -328,22 +332,22 @@ class SearchDB:
             return False
 
 
-    def get_product_votes(self, inputs, loutput):
+    def get_voted_products(self, inputs, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:friend_list)-[r:VOTE_PRODUCT]->(f:product) " \
+            query = "MATCH (a:User)-[r:VOTE_PRODUCT]->(f:product) " \
                     " WHERE r.friend_circle_id = $friend_circle_id_" \
-                    " AND f.product_id = $product_id_ " \
                     " AND r.occasion_year = $occasion_year_ " \
                     " AND r.occasion_name = $occasion_name_" \
-                    " RETURN count(a.user_id) as total_users, r.vote as vote, f.product_id as product_id "
+                    " RETURN count(a.user_id) as total_users, r.vote as vote, f.product_id as product_id, " \
+                    " f.product_title as product_title, f.price as price"
             result = driver.run(query, friend_circle_id_=inputs["friend_circle_id"],
-                                product_id_=inputs["product_id"],
                                 occasion_name_=inputs["occasion_name"],
                                 occasion_year_=inputs["occasion_year"])
 
             for record in result:
                 loutput.append(record.data())
+            """
             if not self.get_product_comments(inputs, loutput):
                 current_app.logger.error(
                     "Error in getting the product details from the product votes function for friend circle id " +
@@ -351,6 +355,7 @@ class SearchDB:
                 print("Error in getting the product details from the product votes function for friend circle id ", inputs[
                     "f.product_id"])
                 return False
+            """
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -379,6 +384,7 @@ class SearchDB:
                                 occasion_year_=inputs["occasion_year"])
             for record in result:
                 loutput.append(record.data())
+
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
