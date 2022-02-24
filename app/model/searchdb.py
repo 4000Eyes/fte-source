@@ -344,6 +344,7 @@ class SearchDB:
             result = driver.run(query, friend_circle_id_=inputs["friend_circle_id"],
                                 occasion_name_=inputs["occasion_name"],
                                 occasion_year_=inputs["occasion_year"])
+            #I have to make changes to move away from occasion name to id soon
 
             for record in result:
                 loutput.append(record.data())
