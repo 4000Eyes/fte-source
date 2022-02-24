@@ -109,6 +109,7 @@ class UserHelperFunctions():
             ack_hash["last_name"] = loutput["last_name"]
             ack_hash["gender"] = loutput["gender"]
             ack_hash["location"] = loutput["location"]
+            ack_hash["image_url"] = loutput["image_url"]
             return True
         except Exception as e:
             current_app.logger.error(e)
@@ -129,6 +130,7 @@ class UserHelperFunctions():
                     ack_hash["last_name"] = row["last_name"]
                     ack_hash["gender"] = row["gender"]
                     ack_hash["location"] = row["location"]
+                    ack_hash["image_url"] = ack_hash["image_url"]
             return True
         except pymongo.errors as e:
             current_app.logger.error(e)

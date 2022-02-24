@@ -286,7 +286,7 @@ class GDBUser(Resource):
                 return False
 
             hshOutput = {}
-            if not self.get_user_summary(user_id, txn, hshOutput):
+            if not self.get_user_summary(user_id, hshOutput, txn=txn):
                 txn.rollback()
                 current_app.logger.error(
                     "Unable to get the friend circle data for user" + user_hash.get("email_address"))
@@ -389,7 +389,7 @@ class GDBUser(Resource):
                 return False
 
             hshOutput = {}
-            if not self.get_user_summary(user_id, txn, hshOutput):
+            if not self.get_user_summary(user_id, hshOutput, txn=txn):
                 txn.rollback()
                 current_app.logger.error(
                     "Unable to get the friend circle data for user" + user_hash.get("email_address"))
@@ -863,30 +863,12 @@ class GDBUser(Resource):
                      " fc.friend_circle_id as friend_circle_id," \
                      " fc.friend_circle_name as friend_circle_name," \
                      " fc.secret_friend_id as secret_friend_id," \
-                     " fc.secret_first_name as secret_first_name," \
+                     " fc.secret_friend_name as secret_first_name," \
                      " fc.secret_last_name as secret_last_name," \
                      " fc.image_url as image_url," \
                      " y.user_id as creator_id," \
                      " y.first_name as creator_first_name," \
                      " y.last_name as creator_last_name"
-
-            # query = "MATCH (n:User)-[rr]->(x:friend_circle) " \
-            #         "WHERE x.friend_circle_id = $friend_circle_id_ " \
-            #         " RETURN  n.user_id as user_id, n.first_name as first_name, " \
-            #         " n.last_name as last_name, n.gender as gender, " \
-            #         " type(rr) as relationship, x.image_url as image_url " \
-            #         " UNION " \
-            #         "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
-            #         "WHERE x.friend_circle_id = $friend_circle_id_ " \
-            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-            #         " m.last_name as last_name, m.gender as gender, " \
-            #         " type(rr) as relationship , x.image_url as image_url" \
-            #         " UNION " \
-            #         "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
-            #         "WHERE x.friend_circle_id = $friend_circle_id_" \
-            #         " RETURN  m.user_id as user_id, m.first_name as first_name, " \
-            #         " m.last_name as last_name, m.gender as gender, " \
-            #         " type(rr) as relationship, x.image_url as image_url"
 
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
@@ -1441,22 +1423,22 @@ class GDBUser(Resource):
                     "RETURN distinct b.web_subcategory_id as subcategory_id," \
                     " b.web_subcategory_name as subcategory_name, b.parent_id as parent_id"
             result = driver.run(query, friend_circle_id_=friend_circle_id)
-            if len(result.data()) <= 0:
-                if not self.get_subcategory_initial_recommendation(list_web_cat, age_hi, age_lo, gender, loutput):
-                    current_app.logger.error(
-                        "Unable to get the initial recommendation for friend circle id" + friend_circle_id)
-                    return False
-                return True
-            else:
-                for record in result:
-                    lsubcat.append(record["subcategory_id"])
+            for record in result:
+                lsubcat.append(record["subcategory_id"])
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            if len(lsubcat) > 0:
                 if not self.get_subcategory_beyond_top_node(lsubcat, age_hi, age_lo, gender, loutput):
                     current_app.logger.error(
                         "Unable to get subcategory recommendation for friend circle id beyond top node " + friend_circle_id)
                     return False
-            print("The  query is ", result.consume().query)
-            print("The  parameters is ", result.consume().parameters)
+            else:
+                if not self.get_subcategory_initial_recommendation(list_web_cat, age_hi, age_lo, gender, loutput):
+                    current_app.logger.error(
+                        "Unable to get the initial recommendation for friend circle id" + friend_circle_id)
+                    return False
             return True
+
         except neo4j.exceptions.Neo4jError as e:
             print("The error message is ", e.message)
             return False
@@ -1492,9 +1474,9 @@ class GDBUser(Resource):
                     "toInteger(a.age_lo) >= $age_lo_ " \
                     " AND toInteger(a.age_hi) <= $age_hi_ " \
                     " AND a.gender = $gender_ " \
-                    " AND a.parent_id in $web_subcategory_id " \
+                    " AND a.parent_id in $web_subcategory_id_ " \
                     " RETURN a.web_subcategory_id as web_subcategory_id, a.web_subcategory_name as web_subcategory_name"
-            result = driver.run(query, web_category_id_=lweb_subcategory_id, age_lo_=age_lo, age_hi_=age_hi,
+            result = driver.run(query, web_subcategory_id_=lweb_subcategory_id, age_lo_=age_lo, age_hi_=age_hi,
                                 gender_=gender)
             for record in result:
                 loutput.append(record.data())
@@ -1529,7 +1511,7 @@ class GDBUser(Resource):
             print("The error message is ", e.message)
             return False
 
-    def get_user_summary(self, user_id, txn, hshOutput):
+    def get_user_summary(self, user_id,  hshOutput, txn=None, list_output=None):
         try:
             # made changes on 01/09/2021 to add to the total count of contributor to count for admin
             # made changes on 01/10/2021 to add approval status to the query
@@ -1554,12 +1536,12 @@ class GDBUser(Resource):
                      " fc.friend_circle_id as friend_circle_id," \
                      " fc.friend_circle_name as friend_circle_name," \
                      " fc.secret_friend_id as secret_friend_id," \
-                     " fc.secret_first_name as secret_first_name," \
+                     " fc.secret_friend_name as secret_first_name," \
                      " fc.secret_last_name as secret_last_name," \
                      " fc.image_url as image_url, " \
                      " fc.age as age," \
                      " min (case ff.user_id when $user_id_ then coalesce(ff.application_status,0) end) as contrib_status," \
-                     " count(distinct ff.user_id) + 1 as total_contributors"
+                     " count(distinct ff.user_id)  as total_contributors"
 
 
             if txn is None:
@@ -1570,8 +1552,10 @@ class GDBUser(Resource):
             #made changes on 01/12/2022 to replace the key from actual friend circle id to tag "friend_circle_id"
 
             for record in result:
+                if list_output is not None:
+                    list_output.append(record.data())
                 #hshOutput[record["friend_circle_id"]] = record.data()
-                hshOutput["friend_circle_id"] = record.data()
+                hshOutput[record["friend_circle_id"]] = record.data()
 
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
@@ -1588,17 +1572,26 @@ class GDBUser(Resource):
             if not self.get_subcategory_interest_by_user(user_id, hsh2):
                 current_app.logger.error("Error in getting interest count for " + user_id)
                 return False
-
+            l_category = []
+            l_scategory = []
             for key in hsh1:
+                if list_output is not None:
+                    l_category.append({"friend_circle_id":key, "count":hsh1[key]["interests"]})
                 if key in hsh2:
                     total_votes = int(hsh1[key]["interests"]) + int(hsh2[key]["interests"])
                 else:
                     total_votes = int(hsh1[key]["interests"])
                 if key in hshOutput:
                     hshOutput[key].update({"interests": total_votes})
+            if list_output is not None:
+                for key in hsh2:
+                    l_scategory.append({"friend_circle_id": key, "count": hsh1[key]["interests"]})
+                list_output.append({"category":l_category})
+                list_output.append({"subcategory":l_scategory})
 
-            # for key in hsh1:
-            #     hshOutput[key].update(hsh1[key])
+            for key in hsh1:
+                if key in hshOutput:
+                    hshOutput[key].update(hsh1[key])
 
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -1859,38 +1852,31 @@ class GDBUser(Resource):
     def approve_occasion(self, user_id, friend_circle_id, occasion_id, status, output_hash):
         try:
             driver = NeoDB.get_session()
-            txn = driver.begin_transaction()
             query = "MATCH " \
                     " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
                     " (b:User{user_id:$friend_id_})-[:CIRCLE_CREATOR]->(fc:friend_circle{friend_circle_id:$friend_circle_id_})" \
                     " set f.friend_occasion_status = $status_ , f.updated_dt = $updated_dt_" \
                     " RETURN f.friend_circle_id as friend_circle_id"
 
-            result = txn.run(query,
+            result = driver.run(query,
                              friend_circle_id_=friend_circle_id,
                              friend_id_ = user_id,
                              status_=status,
-                             occasion_id_=occasion_id,
+                             occasion_id_=str(occasion_id),
                              updated_dt_=self.get_datetime())
-            if result is not None:
-                for record in result:
-                    output_hash["friend_circle_id"] = record["friend_circle_id"]
-            else:
-                current_app.logger.error("Unable to approve the vote for ", user_id, friend_circle_id)
-                print("Unable to insert the vote for ", user_id, friend_circle_id)
-                return False
+
+            for record in result:
+                output_hash["friend_circle_id"] = record["friend_circle_id"]
+
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             if len(output_hash) <= 0:
                 current_app.logger.error("Unable to approve the vote for ", user_id, friend_circle_id)
                 print("Unable to insert the vote for ", user_id, friend_circle_id)
-                txn.rollback()
                 return False
 
-            txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
-            txn.rollback()
             current_app.logger.error(e.message)
             print(e.message)
             return False
@@ -1899,12 +1885,39 @@ class GDBUser(Resource):
             print(e)
             return False
 
-    def get_occasion(self, friend_circle_id, loutput):
+    def get_occasion_by_user(self, user_id, loutput):
+        try:
+            l_friend_circle = []
+            user_output = []
+            if not self.get_friend_circles(user_id, user_output):
+                current_app.logger.error("Unable to get the friend circle information")
+                return False
+            hsh = {}
+            for row in user_output:
+                if row["relationship"] != "SECRET_FRIEND":
+                    if row["friend_circle_id"] not in hsh:
+                        hsh[row["friend_circle_id"]] = 1
+                        l_friend_circle.append(row["friend_circle_id"])
+
+            if len(l_friend_circle) <= 0:
+                current_app.logger.info("This user is not part of any friend circle" + str(user_id))
+                return True
+
+            if not self.get_occasion(l_friend_circle, user_id, loutput):
+                current_app.logger.error("Unable to get all occasions by user for " + str(user_id))
+                return False
+            return True
+        except Exception as e:
+            current_app.logger.error("Exception occured in get_occasion_by_user for user " + str(user_id))
+            return False
+
+
+    def get_occasion(self, l_friend_circle, user_id, loutput):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
                     " WHERE " \
-                    " f.friend_circle_id = $friend_circle_id_ and " \
+                    " f.friend_circle_id in $friend_circle_id_ and " \
                     " f.friend_occasion_status = 1 and " \
                     " b.status_id = 1 " \
                     " RETURN a.user_id as user_id, f.occasion_date as occasion_date , " \
@@ -1912,9 +1925,11 @@ class GDBUser(Resource):
                     "b.friend_circle_id as custom_friend_circle_id," \
                     "b.occasion_frequency as occasion_frequency"
             result = driver.run(query,
-                                friend_circle_id_=friend_circle_id)
+                                friend_circle_id_=l_friend_circle)
             hsh = {}
             for record in result:
+                print (record.data())
+                hsh = collections.defaultdict(dict)
                 hsh["occasion_id"] = record["occasion_id"]
                 hsh["occasion_date"] = record["occasion_date"]
                 hsh["occasion_frequency"] = record["occasion_frequency"]
@@ -1924,10 +1939,23 @@ class GDBUser(Resource):
             hsh_occasion = {}
             next_occasion = []
             for occasion in loutput:
+                if str(hsh["occasion_date"]).strip() is None:
+                    next
                 if not self.calculate_next_occasion(occasion["occasion_date"], occasion["occasion_frequency"], hsh_occasion):
                     current_app.logger.error("Unable to get the next occasion data for " +  occasion["custom_friend_circle_id"])
                     return False
                 occasion.update(hsh_occasion)
+
+            hsh_votes = {}
+            if not self.get_occasion_votes(l_friend_circle, user_id, hsh_votes):
+                current_app.logger.error("Unable to get the vote details for friend circle id " )
+                return False
+
+            for friend_circle_id in l_friend_circle:
+                for row in loutput:
+                    if friend_circle_id in hsh_votes:
+                        row.update(hsh_votes[friend_circle_id])
+
 
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
@@ -2023,7 +2051,7 @@ class GDBUser(Resource):
             current_app.logger.error("There is an issue in converting date " + e)
             return None
 
-    def vote_occasion(self, user_id, friend_id, friend_circle_id, occasion_id, flag, value, value_timezone,
+    def vote_occasion(self, user_id, friend_circle_id, occasion_id, flag, value, value_timezone,
                       output_hash):
         try:
             driver = NeoDB.get_session()
@@ -2043,34 +2071,50 @@ class GDBUser(Resource):
                                 value_=value, value_timezone_=value_timezone, status_=flag,
                                 updated_dt_=self.get_datetime(),
                                 created_dt_=self.get_datetime())
-            if result is not None:
-                for record in result:
-                    output_hash["friend_circle_id"] = record["friend_circle_id"]
-            else:
-                current_app.logger.error("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
-                print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
-                return False
-            if output_hash["friend_circle_id"] is None:
-                current_app.logger.error("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
-                print("Unable to insert the vote for ", user_id, friend_id, friend_circle_id)
+
+            for record in result:
+                output_hash["friend_circle_id"] = record["friend_circle_id"]
+
+            if "friend_circle_id" not in output_hash:
+                current_app.logger.error("Unable to insert the vote for ", user_id, friend_circle_id)
+                print("Unable to insert the vote for ", user_id, friend_circle_id)
                 return False
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the SQL", e)
             return False
 
-    def get_occasion_votes(self, friend_circle_id, loutput):
+    def get_occasion_votes(self, l_friend_circle, user_id, hsh_output):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:User)-[r:VOTE_OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
-                    " WHERE f.friend_circle_id = $friend_circle_id_ " \
-                    " RETURN a.user_id as user_id,  r.status as status, r.value as value, b.occasion_id as occasion_id "
-            result = driver.run(query, friend_circle_id_=friend_circle_id)
+                    " WHERE f.friend_circle_id in $friend_circle_id_ " \
+                    " RETURN  sum(coalesce(r.value,0)) as total_votes, b.occasion_id as occasion_id," \
+                    " f.friend_circle_id as friend_circle_id," \
+                    " sum(case a.user_id when a.user_id = $user_id_ then 1 else 0 end) as user_vote "
+            result = driver.run(query, friend_circle_id_= l_friend_circle, user_id_ = user_id)
             for record in result:
-                loutput.append(record.data())
+                hsh_output[record["friend_circle_id"]]  = collections.defaultdict(dict)
+                hsh_output[record["friend_circle_id"]] = record.data()
             return True
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the SQL")
+            return False
+
+    def unvote_occasion(self, user_id, friend_circle_id, occasion_id):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (a:User)-[r:VOTE_OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
+                    " WHERE f.friend_circle_id in $friend_circle_id_ and a.user_id = $user_id_" \
+                    " and b.occasion_id = $occasion_id_ " \
+                    " DELETE r "
+
+            result = driver.run(query, user_id_=user_id, friend_circle_id_=friend_circle_id,
+                                occasion_id_=occasion_id)
+
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("Error in executing the SQL", e)
             return False
 
     # structure of tagged products
@@ -2106,12 +2150,12 @@ class GDBUser(Resource):
             elif days_difference.days > 0: # it is in the past
                 if frequency == "Every Year":
                     try:
-                        delta1 = datetime(current_date_time.year, formatted_datetime.month, formatted_occasion_date.day)
+                        delta1 = datetime(current_date_time.year, formatted_occasion_date.month, formatted_occasion_date.day)
                     except ValueError as e: #This is to handle leap year and Feb 29th
                         delta1 = datetime(current_date_time.year, formatted_datetime.month + 1, 1)
                         hsh_occasion["message"] = "Birth date may not be accurate given the leap year"
                     try:
-                        delta2 = datetime(current_date_time.year + 1, formatted_datetime.month, formatted_occasion_date.day)
+                        delta2 = datetime(current_date_time.year + 1, formatted_occasion_date.month, formatted_occasion_date.day)
                     except ValueError as e:
                         delta2 = datetime(current_date_time.year + 1, formatted_datetime.month + 1, 1)
                         hsh_occasion["message"] = "Birth date may not be accurate given the leap year"
@@ -2121,21 +2165,32 @@ class GDBUser(Resource):
                     hsh_occasion["next_occasion_date"] = delta1
                     hsh_occasion["message"] = "NA" if "message" not in hsh_occasion else hsh_occasion["message"]
                 if frequency == "Every Month":
-                    next_occasion_date = formatted_occasion_date + relativedelta(months=1)
+                    try:
+                        transformed_date = datetime(current_date_time.year, formatted_occasion_date.month, formatted_occasion_date.day)
+                    except ValueError as e:
+                        transformed_date = datetime(current_date_time.year, formatted_occasion_date.month + 1, formatted_occasion_date.day)
+                        hsh_occasion["message"] = "moving the occasion by a month due to date issue or leap year"
+
+                    next_occasion_date = transformed_date + relativedelta(months=1)
                     days_left = current_date_time.date() - next_occasion_date.date()
                     hsh_occasion["days_left"] = days_left.days
-                    hsh_occasion["next_occasion_date"] = next_occasion_date.date()
-                    hsh_occasion["message"] = "NA"
+                    hsh_occasion["next_occasion_date"] = next_occasion_date.strftime('%d/%m/%y')
+
                 if frequency == "Every Week":
-                    next_occasion_date = formatted_occasion_date + relativedelta(weeks=1)
+                    try:
+                        transformed_date = datetime(current_date_time.year, formatted_occasion_date.month, formatted_occasion_date.day)
+                    except ValueError as e:
+                        transformed_date = datetime(current_date_time.year, formatted_occasion_date.month + 1, formatted_occasion_date.day)
+                        hsh_occasion["message"] = "moving the occasion by a month due to date issue or leap year"
+
+                    next_occasion_date = transformed_date + relativedelta(months=1)
                     days_left = current_date_time.date() - next_occasion_date.date()
                     hsh_occasion["days_left"] = days_left.days
-                    hsh_occasion["next_occasion_date"] = next_occasion_date.date()
-                    hsh_occasion["message"] = "NA"
+                    hsh_occasion["next_occasion_date"] = next_occasion_date.strftime('%d/%m/%y')
 
             else: # it is now
                 hsh_occasion["days_left"] = 0
-                hsh_occasion["next_occasion_date"] = formatted_occasion_date.date()
+                hsh_occasion["next_occasion_date"] = formatted_occasion_date.strftime('%d/%m/%y')
                 hsh_occasion["message"] = "Congrats! It is a happy day today"
 
             return True

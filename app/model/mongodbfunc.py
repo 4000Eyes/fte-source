@@ -91,7 +91,7 @@ class MongoDBFunctions():
 
             result = mongo_user_collection.find_one({"$or":[{"user_id": user_hash.get("user_id")},{"email":user_hash.get("phone_number")}]})
             if result is None:
-                full_name = user_hash.get("first_name") + " " + user_hash.get("last_name")
+                full_name = str(user_hash.get("first_name")) + " " + str(user_hash.get("last_name"))
                 mongo_user_collection.insert_one({"user_id": user_hash.get("user_id"),
                                                   "email": user_hash.get("email_address"),
                                                   "password": user_hash.get("password"),
@@ -107,7 +107,7 @@ class MongoDBFunctions():
                                                   })
                 return True
             else:
-                current_app.logger.info("User already exists" + user_hash.get("user_id") + " " + user_hash.get("email_address"))
+                current_app.logger.info("User already exists" + str(user_hash.get("user_id")) + " " + str(user_hash.get("email_address")))
                 return True
         except pymongo.errors as e:
             current_app.logger.error(e)

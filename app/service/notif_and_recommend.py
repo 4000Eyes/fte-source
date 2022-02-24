@@ -101,7 +101,7 @@ class NotificationAndRecommendation(Resource):
 
             list_data.append({"unapproved_occasions": list_unapproved_occasions})
 
-            return {"data": json.loads(json.dumps(list_data))}, 200
+            return json.loads(json.dumps(list_data)), 200
 
             if request_id == 2: # for the app notification page
                 final_output = []
@@ -131,7 +131,7 @@ class NotificationAndRecommendation(Resource):
                 list_unapproved_occasions = []
                 if not obj_gdb.get_unapproved_occasions(user_id, l_friend_circle, list_unapproved_occasions):
                     return {"status": "Error in getting the occasion approval data"}, 200
-                return {"data": json.loads(json.dumps(list_unapproved_occasions))}, 200
+                return {"data":json.loads(json.dumps(list_unapproved_occasions))}, 200
             if request_id == 7: # Just get the occasion reminders only
                 pass
 

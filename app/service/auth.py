@@ -193,9 +193,11 @@ class LoginApi(Resource):
             expires = datetime.timedelta(days=7)
             access_token = create_access_token(identity=str(ack_hash["user_id"]), expires_delta=expires)
             hshoutput = {}
-            if not objGDBUser.get_user_summary(ack_hash["user_id"], None, hshoutput):
+            list_output = []
+            if not objGDBUser.get_user_summary(ack_hash["user_id"], hshoutput, txn=None, list_output=list_output):
                 current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
                 return {"status": "failure"}, 401
+            hshoutput.clear()
             hshoutput["logged_user_id"] =  ack_hash["user_id"]
             hshoutput["email_address"] = ack_hash["email_address"]
             hshoutput["phone_number"] = ack_hash["phone_number"]
@@ -231,9 +233,11 @@ class LoginPhoneAPI(Resource):
             expires = datetime.timedelta(days=7)
             access_token = create_access_token(identity=str(ack_hash["user_id"]), expires_delta=expires)
             hshoutput = {}
-            if not objGDBUser.get_user_summary(ack_hash["user_id"], None, hshoutput):
-                current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
-                return {"status": "failure"}, 401
+            list_output = []
+            # if not objGDBUser.get_user_summary(ack_hash["user_id"], hshoutput, txn=None, list_output=list_output):
+            #     current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
+            #     return {"status": "failure"}, 401
+            hshoutput.clear()
             hshoutput["logged_user_id"] = ack_hash["user_id"]
             hshoutput["email_address"] = ack_hash["email_address"]
             hshoutput["phone_number"] = ack_hash["phone_number"]
@@ -241,7 +245,9 @@ class LoginPhoneAPI(Resource):
             hshoutput["last_name"] = ack_hash["last_name"]
             hshoutput["location"] =  ack_hash["location"]
             hshoutput["gender"] = ack_hash["gender"]
-            return {'token': access_token, 'data': json.loads(json.dumps(hshoutput))}, 200
+            hshoutput["image_url"] = ack_hash["image_url"] if "image_url" in ack_hash else None
+            list_output.append(hshoutput)
+            return {'token': access_token, 'data': json.loads(json.dumps(list_output))}, 200
         except Exception as e:
             print("The error is ", e)
             return {'token': 'n/a'}, 400
