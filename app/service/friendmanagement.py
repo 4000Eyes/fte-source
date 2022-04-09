@@ -101,10 +101,19 @@ class ManageFriendCircle(Resource):
                         user_info["approval_status"] = 0
                         user_info["friend_list_flag"] = "Y"
                     else:
-                        user_info["linked_status"] = 0
-                        user_info["linked_user_id"] = None
+                        if not objFriend.get_unique_friend_by_id(user_info["referred_user_id"], output):
+                            return {"status" : "System issue: Unable to find the contributor in the system."}, 400
+
+                        user_info["first_name"] = output["first_name"]
+                        user_info["last_name"] = output["last_name"]
+                        user_info["email_address"] = output["email_address"]
+                        user_info["location"] = output["location"]
+                        user_info["phone_number"] = output["phone_number"]
+                        user_info["linked_status"] = output["linked_status"]
+                        user_info["linked_user_id"] = output["linked_user_id"]
+                        user_info["gender"] = output["gender"]
                         user_info["approval_status"] = 0
-                        user_info["friend_list_flag"] = "N"
+                        user_info["friend_list_flag"] = "N" #Keep the flag as N as we want a record for every user and friend id combination
 
                 hshOutput = {}
                 if not objGDBUser.get_user_roles(user_info["referred_user_id"], user_info["referrer_user_id"],user_info["friend_circle_id"], hshOutput):
@@ -130,7 +139,7 @@ class ManageFriendCircle(Resource):
                     return {"status" : "The referrer is not part of the friend circle. Something is wrong"}, 400
 
                 if hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "N" and hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "N":
-                        return {"status": "The referrer is neither a circle creator nor a contributor"}, 400
+                        return {"status": "The referrer is neither a circle creator nor a contributor" + " user:" + str(user_info["referrer_user_id"])}, 400
 
                 if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
                     is_admin = 1
@@ -251,10 +260,7 @@ class ManageFriendCircle(Resource):
                 #if user_info["email_address"] is None or user_info["referrer_user_id"] is None: #phone primary key support
                 if user_info["phone_number"] is None or user_info["referrer_user_id"] is None:
                     return {"status" : "Failure. phone number and/or referrer user id cannot be null"}
-                # if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_email(user_info["referrer_user_id"],
-                #                                                                         user_info["phone_number"],
-                #                                                                         output) :
-                #phone primary key support
+
 
                 if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_phone(user_info["referrer_user_id"],user_info["phone_number"], output):
                     if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
@@ -289,6 +295,12 @@ class ManageFriendCircle(Resource):
                     current_app.logger.error("Unable to process the approval request")
                     return {"status" : "Failure: Unable to complete the operation"}, 400
                 return {"status" : "Success"}, 200
+
+            if request_id == 8: # Delete a member from the friend circle
+                pass
+
+            if request_id == 9: # Delete the friend circle
+                pass
 
 
             if request_id == 100: # purely for testing purposes
@@ -394,7 +406,6 @@ class InterestManagement(Resource):
                 print ("The request is", request.path, request.host_url, request.date, request.blueprint, request.endpoint, request.environ)
                 hshOutput = {}
                 if objGDBUser.check_user_in_friend_circle( referred_user_id, friend_circle_id, hshOutput) :
-
                     if len(hshOutput) > 0 and  hshOutput["relation_type"] != "SECRET_FRIEND":
                         if list_category_id is not None:
                             if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(referred_user_id, friend_circle_id, list_category_id):
@@ -408,6 +419,17 @@ class InterestManagement(Resource):
                     print ("The user is not part of the circle or a secret friend trying to hack the circle")
                     return {"status": "Failure"}, 400
             return {"status": "success"}, 200
+
+            if request_id == 2: # Map brands to friend_circle
+                list_brand = []
+                list_brand = content["list_brand"] if "list_brand" in content else None  # this should be list of hashs with each member having category_id and vote
+                if len(list_brand) <= 0:
+                    return {"status": "Brand is required"}, 400
+                if objGDBUser.assign_brand_to_friend_circle(user_id, friend_circle_id, l_brand):
+                    current_app.logger.error("Unable to map brands to friend circle")
+                    return {"status": "Failure"}, 400
+
+
         except Exception as e:
             print ("The error is " , e)
             return {"status":"Failure"}, 400
@@ -420,6 +442,18 @@ class InterestManagement(Resource):
         age =  request.args.get("age", type=int)
         gender = request.args.get("gender", type=str)
         request_id = request.args.get("request_id", type=int)
+        raw_subcategory_list = request.args.getlist("subcategory_list")
+        sstr = "("
+        for occ in raw_subcategory_list:
+            if str(occ).find(sstr) >= 0:
+                occ = occ.replace('(', " ")
+                occ = occ.replace(')', " ")
+                occ = occ.replace('"', " ")
+                occ = occ.replace(" ", "")
+                subcategory_list = list(occ.split(","))
+
+        subcategory_list = raw_subcategory_list
+
         objGDBUser = GDBUser()
         loutput = []
 
@@ -435,7 +469,7 @@ class InterestManagement(Resource):
         if request_id == 2:
             hsh = {}
             objFriend = FriendListDB()
-
+            objGDBUser = GDBUser()
             if age is None or gender is None:
                 if not objGDBUser.get_friend_circle_attributes(friend_circle_id, hsh):
                     current_app.logger.error("Unable to get friend circle_attributes")
@@ -483,11 +517,32 @@ class InterestManagement(Resource):
             return {'categories': json.loads(json.dumps(loutput)), "subcategories":json.loads(json.dumps(loutput1))}, 200
 
         if request_id == 4: # get the recently added interest for a given friend_circle
-            objGDBUser = GDBUser()
             list_output = []
             if objGDBUser.get_recently_added_interest(friend_circle_id, list_output):
                 return {"status" : "Failure in getting the recently added interest"}, 400
             return {"interest": json.dumps(json.loads(list_output))}, 200
+
+        if request_id == 5: # get brands
+            loutput = []
+            if objGDBUser.get_brands(loutput):
+                current_app.logger.error("Unable to get brands")
+                return {"status": "Failure: Unable to get brands"}, 400
+            return {"brand": json.dumps(json.loads(loutput))}, 200
+
+        if request_id == 6: # get brands by subcategory
+            loutput = []
+            if objGDBUser.get_brands_by_subcategory(subcategory_list,loutput):
+                current_app.logger.error("Unable to get brands")
+                return {"status": "Failure: Unable to get brands"}, 400
+            return {"brand": json.dumps(json.loads(loutput))}, 200
+
+
+        if request_id == 7: # get brands by friend_circle
+            loutput = []
+            if objGDBUser.get_brands_by_friend_circle(friend_circle_id,loutput):
+                current_app.logger.error("Unable to get brands")
+                return {"status": "Failure: Unable to get brands"}, 400
+            return {"brand": json.dumps(json.loads(loutput))}, 200
 
 # Here is how the occasion management has been implemented.
 
@@ -528,16 +583,21 @@ class OccasionManagement(Resource):
         status = 0
         if request_id == 1:  # add occasion
             print ("Inside occasion request 1")
+            if len(occasion_id) > 14:
+                return {"status": "Occasion id is not a standard occasion"}, 400
+
             if objGDBUser.add_occasion(creator_user_id, friend_circle_id, occasion_id, occasion_date,occasion_timezone, status, output_hash):
                 return {"status": "Success"}, 200
             else:
-                print ("Failure in adding occasion")
+                print ("Failure in adding occasion or occasion already exists")
                 return {"Status:": "Failure"}, 500
+
         if request_id == 2:  # vote for occasion
             if objGDBUser.vote_occasion( creator_user_id, friend_circle_id, occasion_id, flag, value, value_timezone, output_hash):
                 return {"status" : "Success"}, 200
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500
+
         if request_id == 3:
             status = 1
             if objGDBUser.approve_occasion(creator_user_id, friend_circle_id, occasion_id, status, output_hash):
@@ -559,6 +619,13 @@ class OccasionManagement(Resource):
             if not objGDBUser.deactivate_occasion(occasion_id, friend_circle_id):
                 return {"status" : "Failure: occasion not deactivated"}, 400
             return {"status" : "Successfully deactivated"}, 200
+
+        if request_id == 6:  # reactivate custom occasion. This would require custom_occasion_id, admin_user_id
+            if occasion_id is None or friend_circle_id is None:
+                return {"status": "Failure: Missing parameters"}
+            if not objGDBUser.reactivate_occasion(occasion_id, friend_circle_id):
+                return {"status": "Failure: occasion not deactivated"}, 400
+            return {"status": "Successfully deactivated"}, 200
 
     @jwt_required()
     def update(self):

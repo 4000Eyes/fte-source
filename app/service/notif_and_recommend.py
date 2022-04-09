@@ -135,6 +135,18 @@ class NotificationAndRecommendation(Resource):
             if request_id == 7: # Just get the occasion reminders only
                 pass
 
+            if request_id == 8:
+
+                obj_gdb = GDBUser()
+                if not obj_gdb.get_total_interests_stats():
+                    current_app.logger.error("Unable to get the interest stats")
+                    return {"status" : "Error in getting stats"}
+                if not obj_gdb.get_total_friend_circle_stats():
+                    current_app.logger.error("Unable to get the interest stats")
+                    return {"status" : "Error in getting stats"}
+                if not obj_gdb.get_total_occasion_stats():
+                    current_app.logger.error("Unable to get the interest stats")
+                    return {"status" : "Error in getting stats"}
 
             """
             check if the user is admin for any friend circles

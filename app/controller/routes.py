@@ -6,6 +6,7 @@ from app.service.category import CategoryManagement
 from app.service.userproductmanagement import UserProductManagement, UserSearchManagement, AllCategoryRelatedManagement
 from app.service.notif_and_recommend import NotificationAndRecommendation
 from app.service.email_svc import EmailManagement
+from app.service.registered_user_preference import RegisteredUserPreference
 #from app.main import api
 
 def initialize_routes(api):
@@ -29,6 +30,7 @@ def initialize_routes(api):
    api.add_resource(NotificationAndRecommendation, '/api/notify')
    api.add_resource(EmailManagement, '/api/email')
    api.add_resource(FriendAttributes, '/api/attr')
+   api.add_resource(RegisteredUserPreference, '/api/personal')
 
 
    return 0

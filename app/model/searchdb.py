@@ -163,18 +163,23 @@ class SearchDB:
 
             final_filter_list = [ age_floor_hash, age_ceiling_hash]
 
-            if "price_lo" in inputs:
-                price_lo_hash = {}
-                price_lo_hash["range"] = {}
-                price_lo_hash["range"]["gte"] = inputs["price_lo"]
-                price_lo_hash["range"]["path"] = "price"
-                final_filter_list.append(price_lo_hash)
-            if "price_hi" in inputs:
-                price_hi_hash = {}
-                price_hi_hash["range"] = {}
-                price_hi_hash["range"]["lte"] = inputs["price_hi"]
-                price_hi_hash["range"]["path"] = "price"
-                final_filter_list.append(price_hi_hash)
+            if "price_from" in inputs and "price_to" in inputs:
+                if inputs["price_from"] is None:
+                    inputs["price_from"] = 0.01
+                if inputs["price_to"] is None:
+                    inputs["price_to"] = 999999.00
+                price_from_hash = {}
+                price_from_hash["range"] = {}
+                price_from_hash["range"]["gte"] = inputs["price_from"]
+                price_from_hash["range"]["lte"] = inputs["price_to"]
+                price_from_hash["range"]["path"] = "price"
+                final_filter_list.append(price_from_hash)
+
+                # price_to_hash = {}
+                # price_to_hash["range"] = {}
+                # price_to_hash["range"]["lte"] = inputs["price_to"]
+                # price_to_hash["range"]["path"] = "price"
+                # final_filter_list.append(price_to_hash)
 
 
             if 'color' in inputs and len(inputs["color"]) > 0:
@@ -331,6 +336,34 @@ class SearchDB:
             txn.rollback()
             return False
 
+    def get_voted_product_count(self, friend_circle_id, occasion_name, occasion_year, loutput):
+        try:
+            driver = NeoDB.get_session()
+            query = "MATCH (a:User)-[r:VOTE_PRODUCT]->(f:product) " \
+                    " WHERE r.friend_circle_id = $friend_circle_id_" \
+                    " AND r.occasion_year = $occasion_year_ " \
+                    " AND r.occasion_name = $occasion_name_" \
+                    " RETURN coalesce(count(f.product_id),0) as total_product"
+
+            result = driver.run(query, friend_circle_id_=friend_circle_id,
+                                occasion_name_=occasion_name,
+                                occasion_year_=occasion_year)
+            #I have to make changes to move away from occasion name to id soon
+
+            for record in result:
+                loutput.append(record.data())
+
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("Error in executing the SQL", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
 
     def get_voted_products(self, inputs, loutput):
         try:
