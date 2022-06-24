@@ -1545,19 +1545,20 @@ class GDBUser(Resource):
             query = "MATCH (a:User)-[r:INTEREST]->(b:WebSubCat) " \
                     " WHERE r.friend_circle_id in $friend_circle_id_ " \
                     " with collect({" \
-                    "interest_id: b.subcategory_id ," \
-                    " interest_name: b.subcategory_name, " \
-                    " interest_type: 'subcategory' " \
+                    "interest_id: b.web_subcategory_id ," \
+                    " interest_name: b.web_subcategory_name, " \
+                    " interest_type: 'subcategory', " \
                     " user_id: a.user_id," \
                     " friend_circle_id: r.friend_circle_id }) as rows" \
                     " MATCH (a:User)-[r:INTEREST]->(b:WebCat) " \
                     " WHERE r.friend_circle_id in $friend_circle_id_ " \
                     " with rows + collect({" \
-                    " interest_id: b.category_id," \
-                    " interest_name: b.category_name , " \
-                    " interest_type: 'category' " \
+                    " interest_id: b.web_category_id," \
+                    " interest_name: b.web_category_name , " \
+                    " interest_type: 'category', " \
                     " user_id: a.user_id," \
                     " friend_circle_id: r.friend_circle_id }) as allrows " \
+                    " UNWIND allrows as row " \
                     " with row.interest_id as interest_id, row.interest_name as interest_name, " \
                     " row.interest_type as interest_type, row.user_id as user_id, " \
                     " row.friend_circle_id as friend_circle_id  " \
@@ -1567,12 +1568,16 @@ class GDBUser(Resource):
             for record in result:
                 if record["friend_circle_id"] not in hshoutput:
                     hshoutput[record["friend_circle_id"]] = collections.defaultdict(dict)
+                if record["user_id"] not in hshoutput[record["friend_circle_id"]]:
                     hshoutput[record["friend_circle_id"]][record["user_id"]] = []
-                hshoutput[record["friend_circle_id"]][record["user_id"]].append({record.data()})
+                hshoutput[record["friend_circle_id"]][record["user_id"]].append(record.data())
 
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
+        except Exception as e:
+            print("Error in executing the query", e)
+            return False
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the query", e)
             return False
@@ -1584,34 +1589,37 @@ class GDBUser(Resource):
             query = "MATCH (a:User)-[r:PERSONAL_INTEREST]->(b:WebSubCat) " \
                     " WHERE r.user_id in $user_id_ " \
                     " with collect({" \
-                    "interest_id: b.subcategory_id ," \
-                    " interest_name: b.subcategory_name, " \
-                    " interest_type: 'subcategory' " \
-                    " user_id: a.user_id }) as rows" \
+                    "interest_id: b.web_subcategory_id ," \
+                    " interest_name: b.web_subcategory_name, " \
+                    " interest_type: 'subcategory', " \
+                    " user_id: a.user_id }) as rows " \
                     " MATCH (a:User)-[r:PERSONAL_INTEREST]->(b:WebCat) " \
                     " WHERE r.user_id in $user_id_ " \
                     " with rows + collect({" \
-                    "interest_id: b.category_id," \
-                    " interest_name: b.category_name , " \
-                    " interest_type: 'category' " \
-                    " user_id: a.user_id }) as allrows" \
-                    " UNWIND allrows as rows " \
+                    "interest_id: b.web_category_id," \
+                    " interest_name: b.web_category_name , " \
+                    " interest_type: 'category' ," \
+                    " user_id: a.user_id }) as allrows " \
+                    " UNWIND allrows as row " \
                     " with row.interest_id as interest_id, row.interest_name as interest_name, row.interest_type as interest_type, row.user_id as user_id " \
                     " return interest_id, interest_name, interest_type, user_id " \
                     " order by user_id, interest_type"
             result = driver.run(query, user_id_=list_user_id)
             for record in result:
                 if record["user_id"] not in hshoutput:
-                    record["user_id"] = collections.defaultdict(dict)
-                    record["user_id"]["category"] = []
-                    record["user_id"]["subcategory"] = []
-                if record["interest_id"] == "category":
-                    record["user_id"]["category"].append({record.data()})
-                elif record["interest_id"] == "subcategory":
-                    record["user_id"]["category"].append({record.data()})
+                    hshoutput[record["user_id"]] = collections.defaultdict(dict)
+                    hshoutput[record["user_id"]]["category"] = []
+                    hshoutput[record["user_id"]]["subcategory"] = []
+                if record["interest_type"] == "category":
+                    hshoutput[record["user_id"]]["category"].append(record.data())
+                elif record["interest_type"] == "subcategory":
+                    hshoutput[record["user_id"]]["subcategory"].append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
+        except Exception as e:
+            print("Error in executing the query", e)
+            return False
         except neo4j.exceptions.Neo4jError as e:
             print("Error in executing the query", e)
             return False
@@ -2637,7 +2645,7 @@ class GDBUser(Resource):
             print(e)
             return False
 
-    def get_total_interests_stats(self):
+    def get_total_interests_stats(self, list_output):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:User)-[r:PERSONAL_INTEREST]->(b:WebSubCat) " \
@@ -2673,7 +2681,7 @@ class GDBUser(Resource):
             print(e)
             return False
 
-    def get_total_occasion_stats(self):
+    def get_total_occasion_stats(self, list_output):
         def get_total_friend_circle_stats(self, list_output):
             try:
                 driver = NeoDB.get_session()

@@ -544,6 +544,41 @@ class InterestManagement(Resource):
                 return {"status": "Failure: Unable to get brands"}, 400
             return {"brand": json.dumps(json.loads(loutput))}, 200
 
+        if request_id == 8: # get the nodes for a give parent
+            hsh = {}
+            objFriend = FriendListDB()
+            objGDBUser = GDBUser()
+            if age is None or gender is None:
+                if not objGDBUser.get_friend_circle_attributes(friend_circle_id, hsh):
+                    current_app.logger.error("Unable to get friend circle_attributes")
+                    return {"status": "Failure: Unable to get the age and gender from friend circle"}, 400
+                age = hsh["age"]
+                gender = hsh["gender"]
+            else:
+                if not objFriend.update_gender_age(friend_circle_id,gender, age):
+                    current_app.logger.error("Unable to update the friend circle with age or gender")
+                    return {"status": "Failure: Unable to update the friend circle with the given data"}
+            if age is None:
+                if not objGDBUser.get_age_from_occasion(friend_circle_id, hsh):
+                    current_app.logger.error("Error in getting teh age for the secret friend")
+                    return {"status": "Failure:Error in getting the age"}, 400
+                age = hsh["age"]
+                if ("lo" not in hsh   or "hi" not in hsh) or (hsh["lo"] is None or hsh["hi"] is None):
+                    current_app.logger.error("Age hi or lo is missing or invalid")
+                    return {"status":"Failure: Unable to get age range"}, 400
+            # if gender is None:
+            #     current_app.logger.error("gender cannot be none and it is")
+            #     return {"status" : "Failure: Unable to get the gender"}, 400
+
+            if not SiteGeneralFunctions.get_age_range(int(age), hsh):
+                current_app.logger.error("Unable to get age range")
+                return {"status": "Failure: Unable to get age range"}, 400
+            if not objGDBUser.get_subcategory_beyond_top_node(subcategory_list, hsh["hi"], hsh["lo"], gender, loutput):
+                current_app.logger.error(
+                    "Unable to get smarter recommendation for friend circle id" + friend_circle_id)
+                return {"status": "Failure in getting recommendation"}, 401
+            return {"subcategory": json.loads(json.dumps(loutput))}, 200
+
 # Here is how the occasion management has been implemented.
 
 
