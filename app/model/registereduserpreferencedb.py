@@ -49,7 +49,8 @@ class RegisteredUserPreferenceDB(Resource):
             list_friend_circle_ids = []
             hsh_temp = {}
             hsh_friend_circle_lookup = {}
-
+            hsh_friend_circle_attr = {}
+            list_friend_circle_output = []
             # Get all the friend circles that the current user belongs
             if not obj_gdb_user.get_friend_circles(user_id, list_friend_circle_info):
                 current_app.logger.error("Unable to get friend circle information")
@@ -61,6 +62,7 @@ class RegisteredUserPreferenceDB(Resource):
                     list_friend_circle_ids.append(r_friend_circle["friend_circle_id"])
                     list_secret_friend_ids.append(r_friend_circle["secret_friend_id"])
                     hsh_friend_circle_lookup[r_friend_circle["secret_friend_id"]] = r_friend_circle["friend_circle_id"]
+                    hsh_friend_circle_attr[r_friend_circle["secret_friend_id"]] = [r_friend_circle["friend_circle_name"] , r_friend_circle["image_url"]]
 
             hsh_secret_friend_interests = {}
 
@@ -83,7 +85,7 @@ class RegisteredUserPreferenceDB(Resource):
 
                 if secret_friend_id not in hsh_secret_friend_interests:
                     continue
-                list_category_interests = list(map(operator.itemgetter("interest_id") ,  hsh_secret_friend_interests[secret_friend_id]["category"]))
+                list_category_interests = list(map(operator.itemgetter("interest_id"),  hsh_secret_friend_interests[secret_friend_id]["category"]))
                 list_subcategory_interests = list(
                     map(operator.itemgetter("interest_id"), hsh_secret_friend_interests[secret_friend_id]["subcategory"]))
                 list_interests = []
@@ -128,14 +130,21 @@ class RegisteredUserPreferenceDB(Resource):
                                                                                                                     "subcategory"] > 0 else 0
 
                 total_current_user_score = current_user_scat_match_score + current_user_cat_match_score
-                list_output.append({"friend_circle_id":hsh_friend_circle_lookup[secret_friend_id], "friend_circle_score":total_friend_circle_score, "current_user_score": total_current_user_score, "info_type": "friend_circle_id"})
+                hshscoremessage = {}
+                self.set_match_score_message(total_current_user_score, hshscoremessage)
+                list_friend_circle_output.append({"friend_circle_id":hsh_friend_circle_lookup[secret_friend_id],
+                                    "friend_circle_name": hsh_friend_circle_attr[secret_friend_id][0],
+                                    "image_url": hsh_friend_circle_attr[secret_friend_id][1],
+                                    "friend_circle_score": float(total_friend_circle_score),
+                                    "current_user_score": float(total_current_user_score),
+                                    "message": hshscoremessage["message"],
+                                    "info_type": "friend_circle_id"})
 
                 total_current_user_score = 0
                 total_friend_circle_score = 0
                 #friend circle and user score compared to secret friend
 
-
-
+            list_output.append({"friend_circle_score": list_friend_circle_output})
             hsh_current_user_interests = {}
 
             # Get the interests of the current user
@@ -153,7 +162,7 @@ class RegisteredUserPreferenceDB(Resource):
 
             if len(list_current_friend_circles_attr) <= 0:
                 current_app.logger.error("The current user is not secret friend to any one")
-                list_output.append( {"user_id": user_id,"info_type": "current_user", "current_user_id_match": "N/A"})
+                list_output.append({"current_userscore":[{"user_id": user_id,"info_type": "current_user", "current_user_id_match": "N/A"}]})
                 return True
 
             hsh_user_secret_friend_interests = {}
@@ -199,7 +208,10 @@ class RegisteredUserPreferenceDB(Resource):
             cat_match_score = category_match/len(list_category_interests) if hsh_values["category"] > 0 else 0
             scat_match_score = subcategory_match["subcategory"]/len(list_category_interests) if hsh_values["subcategory"] > 0 else 0
             total_score = scat_match_score + cat_match_score
-            list_output.append({"user_id": user_id, "current_user_id_match" : total_score, "info_type": "current_user"})
+
+
+            list_output.append({"current_user_score": [{"user_id": user_id, "current_user_id_match" : total_score,
+                                                  "info_type": "current_user"}]})
 
             return True
         except Exception as e:
@@ -210,3 +222,15 @@ class RegisteredUserPreferenceDB(Resource):
 
 
 
+    def set_match_score_message(self, score, hshoutput):
+
+        if float(score) >= 0 and float(score) <= 25:
+            hshoutput["message"] = "Keep Learning"
+        elif float(score) >= 26 and float(score) <= 50:
+            hshoutput["message"] = "Getting there"
+        elif float(score) >= 51 and float(score) <= 75:
+            hshoutput["message"] = "Good Job. Keep Going!"
+        elif float(score) >= 76:
+            hshoutput["message"] = "You are the best"
+        else:
+            hshoutput["message"] = None

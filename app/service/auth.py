@@ -2,11 +2,15 @@ import os
 
 from flask import Response, request, current_app, g
 from flask_jwt_extended import create_access_token, decode_token
+
+
 from app.model.models import UserHelperFunctions
 from app.model.gdbmethods import GDBUser
+from app.config import config_by_name
 from flask_restful import Resource
 import vonage
-from app.model.email_manager import EmailManagement
+from app.model.kafka_producer import KafkaMessageProducer
+
 import datetime
 import json
 
@@ -58,6 +62,12 @@ class SignupApi(Resource):
             if not objGDBUser.insert_user(user_hash, data):
                 current_app.logger.error("There is an issue in inserting the user")
                 return {'status': ' User already exists'}, 400
+
+            if int(os.environ.get("GEMIFT_VERSION")) == 2:
+                user_hash.update({"info_type":"new_user_email"})
+                kafka_producer =  KafkaMessageProducer(current_app.config["KAFKA_BROKER"])
+                kafka_producer.send_msg(json.dumps(user_hash))
+
             """
             objEmail = EmailManagement()
             registration_token = objHelper.generate_confirmation_token(user_hash["email_address"])
@@ -68,7 +78,7 @@ class SignupApi(Resource):
                     current_app.logger.error("Error completing registration. Unable to send email to the user")
                     return {"Status" : "Failure in completing registration. Unable to send the email or the email is invalid"}, 401
             """
-            return {'data': json.dumps(data)}, 200
+            return {'data': json.loads(json.dumps(data))}, 200
                 # Check if there is an approved invitation request for this user. If so, automatically add them to the circle
                 # and take them to the circle home page.
         except Exception as e:
@@ -86,8 +96,11 @@ class PhoneSignUpAPI(Resource):
                 current_app.logger.error("No parameters send into the sign up api (post). Check")
                 return {"status": "failure"}, 500
             data = {}
-            print(body)
+            print("The body is ", body)
             user_hash = {}
+            if "email" not in body:
+                return {"status": "No Value for email is sent"}, 400
+
             user_hash["email_address"] = body["email"]
             user_hash["password"] = body["password"]
             user_hash["user_type"] = body["user_type"]
@@ -102,7 +115,7 @@ class PhoneSignUpAPI(Resource):
 
             if user_hash.get("phone_number") is None or user_hash.get("user_type") is None or user_hash.get(
                     "password") is None or user_hash.get("phone_number") is None or user_hash.get(
-                    "gender") is None or user_hash.get("first_name") is None or user_hash.get("last_name") is None:
+                    "gender") is None or user_hash.get("first_name") is None or user_hash.get("email_address") is None or user_hash.get("last_name") is None:
                 current_app.logger.error(
                     "Missing one or many inputs including email, phone, password, gender, first_name, last_name, user_type")
                 return {
@@ -110,14 +123,14 @@ class PhoneSignUpAPI(Resource):
 
             objGDBUser = GDBUser()
             print("Before calling get user")
-            if objGDBUser.get_user_by_phone(user_hash.get("email_address"), data):
+            if objGDBUser.get_user_by_phone(user_hash.get("phone_number"), data):
                 if len(data) > 0:
                     current_app.logger.info(
                         "User id exists for " + user_hash.get("phone_number") + "user id is" + data.get("user_id"))
                     return {'status': ' User already exists'}, 400
             else:
-                current_app.logger.error("User with this phone number already exists" + user_hash.get("email_address"))
-                return {'status': ' User already exists for ' + user_hash.get("email_address")}, 400
+                current_app.logger.error("User with this phone number already exists" + user_hash.get("phone_number"))
+                return {'status': ' User already exists for ' + user_hash.get("phone_number")}, 400
 
             data = {}
 
@@ -125,19 +138,11 @@ class PhoneSignUpAPI(Resource):
             pwd = objHelper.hash_password(user_hash.get("password"))
             print("The password is ", pwd, user_hash.get("password"))
             user_hash["password"] = pwd
+            user_hash.update()
             if not objGDBUser.insert_user_by_phone(user_hash, data):
                 current_app.logger.error("There is an issue in inserting the user")
                 return {'status': ' User already exists'}, 400
-            """
-            objEmail = EmailManagement()
-            registration_token = objHelper.generate_confirmation_token(user_hash["email_address"])
 
-            if registration_token is not None:
-                confirmation_url = 'https://www.gemift.com/token=' + registration_token
-                if objEmail.send_signup_email(user_hash["email_address"], user_hash["first_name"], user_hash["last_name"], confirmation_url):
-                    current_app.logger.error("Error completing registration. Unable to send email to the user")
-                    return {"Status" : "Failure in completing registration. Unable to send the email or the email is invalid"}, 401
-            """
             return {'data': json.loads(json.dumps(data))}, 200
             # Check if there is an approved invitation request for this user. If so, automatically add them to the circle
             # and take them to the circle home page.
@@ -205,7 +210,7 @@ class LoginApi(Resource):
             hshoutput["last_name"] = ack_hash["last_name"]
             hshoutput["location"] =  ack_hash["location"]
             hshoutput["gender"] = ack_hash["gender"]
-            return {'token': access_token, 'data' : json.dumps(hshoutput)}, 200
+            return {'token': access_token, 'data' : json.loads(json.dumps(hshoutput))}, 200
         except Exception as e:
             print ("The error is ", e)
             return {'token': 'n/a'}, 400
@@ -258,9 +263,12 @@ class GemiftVonageOTP(Resource):
             content = request.get_json()
             if "request_id" not in content:
                 return {"status" : "Required parameters are missing (phone number, request_id)"}, 400
+
             request_id = content["request_id"]
             vonage_api_key = os.environ.get("VONAGE_API_KEY")
             vonage_api_secret = os.environ.get("VONAGE_API_SECRET")
+
+            print("The keys are ", vonage_api_key, vonage_api_secret)
             client = vonage.Client(key=vonage_api_key, secret=vonage_api_secret)
             verify = vonage.Verify(client)
             hshOutput = {}
@@ -289,7 +297,7 @@ class GemiftVonageOTP(Resource):
                     print("Error: %s" % response["error_text"])
                     return {"status": "Error in validting the code"}, 400
 
-            return {"status" : json.dumps(hshOutput)}
+            return {"status" : json.loads(json.dumps(hshOutput))}
 
         except Exception as e:
             return {"status" : "Failure in vonage OTP processing"}    , 400

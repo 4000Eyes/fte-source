@@ -1,4 +1,6 @@
 import json
+import os
+
 import neo4j.exceptions
 import logging
 from flask import current_app, g
@@ -548,10 +550,11 @@ class FriendListDB:
                     return False
                 objMongo = MongoDBFunctions()
                 hshuser["user_id"] = hshuser["referrer_user_id"]
-                if not objMongo.insert_user(hshuser):
-                    txn.rollback()
-                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                    return False
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    if not objMongo.insert_user(hshuser):
+                        txn.rollback()
+                        current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                        return False
             if admin_flag == 1:
                 fquery = "MATCH  (n:friend_list), (fc:friend_circle) " \
                          " WHERE n.user_id = $user_id_ " \
@@ -582,15 +585,16 @@ class FriendListDB:
                     return False
                 loutput["data"] = list_output
             else:
-                objMongo = MongoDBFunctions()
-                hshuser["user_type"] = "Existing"
-                hshuser["comm_type"] = "Email"
-                if not objMongo.insert_approval_queue(hshuser):
-                    txn.rollback()
-                    current_app.logger.error(
-                        "Unable to insert the record into the approval queue for " + hshuser["email_address"])
-                    print("Unable to insert the record into the approval queue for " + hshuser["email_address"])
-                    return False
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    objMongo = MongoDBFunctions()
+                    hshuser["user_type"] = "Existing"
+                    hshuser["comm_type"] = "Email"
+                    if not objMongo.insert_approval_queue(hshuser):
+                        txn.rollback()
+                        current_app.logger.error(
+                            "Unable to insert the record into the approval queue for " + hshuser["email_address"])
+                        print("Unable to insert the record into the approval queue for " + hshuser["email_address"])
+                        return False
             txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -679,11 +683,13 @@ class FriendListDB:
                     key = str(hshuser["referrer_user_id"]) + str(hshuser["phone_number"])
                     referred_user_id = output_hash[key]["user_id"]
                 hshuser["user_id"] = referred_user_id  # Need this for mongo insert
-                objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(hshuser):
-                    txn.rollback()
-                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                    return False
+
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    objMongo = MongoDBFunctions()
+                    if not objMongo.insert_user(hshuser):
+                        txn.rollback()
+                        current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                        return False
             if hshuser["group_name"] is None:
                 hshuser["group_name"] = "Friend circle name " + hshuser["first_name"] + " " + hshuser["last_name"]
 
@@ -780,10 +786,12 @@ class FriendListDB:
                 print("Unable to insert the email address into friend circle " + user_output["email_address"])
                 return False
             objMongo = MongoDBFunctions()
-            if not objMongo.insert_user(user_output):
-                txn.rollback()
-                current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                return False
+
+            if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                if not objMongo.insert_user(user_output):
+                    txn.rollback()
+                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                    return False
 
             friend_circle_hash = {}
             if not self.insert_friend_circle(hshuser["referred_user_id"], hshuser["referrer_user_id"],
@@ -822,11 +830,12 @@ class FriendListDB:
                 key = str(hshuser["referrer_user_id"]) + str(hshuser["phone_number"])
                 hshuser["referred_user_id"] = output_hash[key]["user_id"]
                 hshuser["user_id"] = hshuser["referred_user_id"]
-                objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(hshuser):
-                    txn.rollback()
-                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                    return False
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    objMongo = MongoDBFunctions()
+                    if not objMongo.insert_user(hshuser):
+                        txn.rollback()
+                        current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                        return False
             else:
                 hshuser["referred_user_id"] = hshuser["user_id"]
                 hshuser["referrer_user_id"] = hshuser["friend_id"]

@@ -36,17 +36,17 @@ class RegisteredUserPreference(Resource):
         obj_gdb = GDBUser()
         hsh_output = {}
         list_output = []
-        if request_type == "get_personal_category":
-            if not obj_gdb.get_personal_category_interest_by_user(user_id, hsh_output):
+        if request_type == "get_category":
+            if not obj_gdb.get_personal_category_interest_by_user(user_id, list_output):
                 current_app.logger.error("Unable to get the interest for the personal user")
                 return {"status": "Failure"}, 400
-            return {'data': json.loads(json.dumps(hsh_output))}, 200
+            return {'data': json.loads(json.dumps(list_output))}, 200
 
-        if request_type == "get_personal_subcategory":
-            if not obj_gdb.get_personal_subcategory_interest_by_user(user_id, hsh_output):
+        if request_type == "get_subcategory":
+            if not obj_gdb.get_personal_subcategory_interest_by_user(user_id, list_output):
                 current_app.logger.error("Unable to get the interest for the personal user")
                 return {"status": "Failure"}, 400
-            return {'data': json.loads(json.dumps(hsh_output))}, 200
+            return {'data': json.loads(json.dumps(list_output))}, 200
 
         if request_type == "get_match_score":
             obj_personal_user = RegisteredUserPreferenceDB()
@@ -64,7 +64,7 @@ class RegisteredUserPreference(Resource):
                 current_app.logger.error("Unable to get interest stats")
                 return {"status":"Failure"}, 400
 
-            if not obj_gdb.get_total_occasion_stats(list_output):
+            if not obj_gdb.get_total_friend_circle_stats(list_output):
                 current_app.logger.error("Unable to get interest stats")
                 return {"status":"Failure"}, 400
 

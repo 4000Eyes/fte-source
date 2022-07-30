@@ -139,20 +139,28 @@ class SearchDB:
                 occasions_hash["text"]["path"] = "occasion_id"
                 occasion_flag = 1
                 must_class_hash = occasions_hash
-            if "age_floor" in inputs:
+
+            final_filter_list = []
+            if 'gender' in inputs and inputs["gender"] is not None and len(inputs["gender"]) > 0:
+                gender_hash = {}
+                gender_hash["text"] = {}
+                gender_hash["text"]["query"] = inputs["gender"]
+                gender_hash["text"]["path"] = "gender"
+                final_filter_list.append(gender_hash)
+
+            if "age" in inputs:
                 #range_string =  {"range": {"gte": inputs["age_floor"],"path": "age_lo"}}
                 age_floor_hash = {}
                 age_floor_hash["range"] = {}
-                age_floor_hash["range"]["gte"] = inputs["age_floor"]
+                age_floor_hash["range"]["lte"] = int(inputs["age"])
                 age_floor_hash["range"]["path"] = "age_lo"
 
-            if "age_ceiling" in inputs:
+            if "age" in inputs:
                 #celing = {"range": {"gte": inputs["age_ceiling"],"path": "age_hi"}}
                 age_ceiling_hash = {}
                 age_ceiling_hash["range"] = {}
-                age_ceiling_hash["range"]["lte"] = inputs["age_ceiling"]
+                age_ceiling_hash["range"]["gte"] = int(inputs["age"])
                 age_ceiling_hash["range"]["path"] = "age_hi"
-
 
             #{'range': {'path': 'created_dt','gt': myDatetime}}
 
@@ -161,9 +169,11 @@ class SearchDB:
             date_crieteria_hash["range"]["gt"] = myDatetime
             date_crieteria_hash["path"] = "created_dt"
 
-            final_filter_list = [ age_floor_hash, age_ceiling_hash]
+            final_filter_list.append(age_floor_hash)
+            final_filter_list.append(age_ceiling_hash)
 
-            if "price_from" in inputs and "price_to" in inputs:
+            if "price_from" in inputs and inputs["price_from"] is not None and \
+                    "price_to" in inputs and inputs["price_to"] is not None:
                 if inputs["price_from"] is None:
                     inputs["price_from"] = 0.01
                 if inputs["price_to"] is None:
@@ -180,6 +190,7 @@ class SearchDB:
                 # price_to_hash["range"]["lte"] = inputs["price_to"]
                 # price_to_hash["range"]["path"] = "price"
                 # final_filter_list.append(price_to_hash)
+
 
 
             if 'color' in inputs and len(inputs["color"]) > 0:
@@ -203,7 +214,7 @@ class SearchDB:
                 subcategory_hash = {}
                 subcategory_hash["text"] = {}
                 subcategory_hash["text"]["query"] = inputs["subcategory"]
-                subcategory_hash["text"]["path"] = "subcategory"
+                subcategory_hash["text"]["path"] = "interest"
                 if occasion_flag == 1 or category_flag == 1:
                     final_filter_list.append(subcategory_hash)
                 else:
@@ -220,7 +231,9 @@ class SearchDB:
                                                                  ]}}
                              }
             sort_string = {"$sort": { "price": sort_order }}
-            pipeline = [search_string, sort_string]
+            skip_string = {"$skip": inputs["page_size"]}
+            limit_string = {"$limit": inputs["page_number"]}
+            pipeline = [search_string, sort_string, skip_string, limit_string]
             print ("The pipeline query is", pipeline)
             user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
             result = user_collection.aggregate(pipeline)

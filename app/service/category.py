@@ -15,15 +15,17 @@ class CategoryManagement(Resource):
             request_id = content["request_id"] if "request_id" in content else None
             value = content["value"] if "value" in content else None
             description = content["description"] if "description" in content else None
+            parent_id = content["parent_id"] if "parent_id" in content else None
             web_category_id = content["web_category_id"] if "web_category_id" in content else None
             merch_category_id = content["merch_category_id"] if "merch_category_id" in content else None
             brand_id = content["brand_id"] if "brand_id" in content else None
+
             web_subcategory_id = content["web_subcategory_id"] if "web_subcategory_id" in content else None
             web_subcategory_list = content["web_subcategory_list"] if "web_subcategory_list" in content else None
             age_hi = content["age_hi"] if "age_hi" in content else None
             age_lo = content["age_lo"] if "age_lo" in content else None
             gender = content["gender"] if "gender" in content else None
-
+            image_url = content["image_url"] if "image_url" in content else None
             print ("Request id is ", request_id)
             # Insert merch category
             objCategory = CategoryManagementDB()
@@ -39,7 +41,7 @@ class CategoryManagement(Resource):
                 print ("Successfully added ", value, output_hash.get("web_category_id"))
                 return {"web_category_id": output_hash.get("web_category_id")}, 200
             if request_id == 3:
-                if not objCategory.add_web_subcategory(value,description, age_lo, age_hi, gender,output_hash):
+                if not objCategory.add_web_subcategory(web_subcategory_id, value,description, parent_id, age_lo, age_hi, gender,image_url, output_hash):
                     return {"status": "Failure"},400
                 print ("Successfully added ", value, output_hash.get("web_subcategory_id"))
                 return {"web_subcategory_id": output_hash.get("web_subcategory_id")}, 200
@@ -85,9 +87,14 @@ class CategoryManagement(Resource):
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         output = []
         if request_id == 1 :
-            if not objCategory.get_web_category(friend_circle_id, output):
+            if not objCategory.get_web_category(output):
                 return {"status": "Error in fetching the category"}, 400
             return json.loads(json.dumps(output)), 200
+
+        if request_id == 5:
+            if not objCategory.get_distinct_category_subcategory(output):
+                return {"status": "Error in fetching the subcategory to brands combo"}, 400
+            return {"data": json.loads(json.dumps(output))}, 200
 
         if age_lo is None or age_hi is None or gender is None:
             return {"status": " Age and gender cannot be null"}, 400
@@ -106,5 +113,8 @@ class CategoryManagement(Resource):
             if not objCategory.get_web_subcategory_brands(subcategory_brand_list, age_lo, age_hi, gender, output):
                 return {"status": "Error in fetching the subcategory to brands combo"}, 400
             return output, 200
+
+
+
 
 

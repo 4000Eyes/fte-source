@@ -53,7 +53,7 @@ class EmailManagement(Resource):
             current_app.logger.info(api_response)
             #pprint(api_response)
         except ApiException as e:
-            print("Exception when calling SMTPApi->send_transac_email: %s\n" % e)
+            print("Exception when calling SMTPApi->send_transact_email: %s\n" % e)
             current_app.logger.error(e)
 
     def send_friend_invitation_email(self, email_to, first_name, last_name, secret_friend_name, friend_list, call_to_action):

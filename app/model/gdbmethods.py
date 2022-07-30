@@ -1,14 +1,13 @@
-import json
+import operator
+import os
+
 import neo4j.exceptions
-import logging
 from flask import current_app, g
 from flask_restful import Resource
 from .extensions import NeoDB
 import uuid
 from app.model.mongodbfunc import MongoDBFunctions
 from app.model.searchdb import SearchDB
-import pymongo.collection
-from datetime import datetime
 from pymongo import errors
 import collections
 import pytz
@@ -376,6 +375,7 @@ class GDBUser(Resource):
             objMongo = MongoDBFunctions()
             user_hash["referrer_user_id"] = None
             user_hash["user_id"] = output_hash["user_id"]
+
             if not objMongo.insert_user(user_hash):
                 current_app.logger.error("Unable to insert the user into search db" + user_hash.get("email_address"))
                 txn.rollback()
@@ -921,6 +921,24 @@ class GDBUser(Resource):
                      " fc.secret_last_name as secret_last_name," \
                      " fc.image_url as image_url"
 
+            query = " match (pp:friend_list)<-[rr]->(xf:friend_circle) "\
+                    " where ( pp.user_id = $user_id_ or pp.friend_id = $user_id_ " \
+                    " or xf.creator_id= $user_id_ ) and "\
+                    " xf.secret_friend_id <> $user_id_" \
+                    " return " \
+                    " pp.user_id as user_id," \
+                    " pp.first_name as first_name," \
+                    " pp.last_name as last_name," \
+                    " pp.gender as gender," \
+                    " pp.age as age," \
+                    " type(rr) as relationship, " \
+                    " xf.friend_circle_id as friend_circle_id," \
+                    " xf.friend_circle_name as friend_circle_name," \
+                    " xf.secret_friend_id as secret_friend_id," \
+                    " xf.secret_friend_name as secret_first_name," \
+                    " xf.secret_last_name as secret_last_name," \
+                    " xf.image_url as image_url"
+
             result = driver.run(query, user_id_=user_id)
             counter = 0
 
@@ -1346,6 +1364,61 @@ class GDBUser(Resource):
             print("Error in executing the SQL", e)
             return False
 
+    def get_interest_v2(self, age, gender, page_size, page_number, list_output, user_id=None, friend_circle_id=None):
+        try:
+            obj_mongo = MongoDBFunctions()
+
+            while True:
+
+                if not obj_mongo.get_interest(age, gender, page_size, page_number, list_output):
+                    current_app.logger.error("There is an error fetching interests.")
+                    return False
+                if len(list_output) <= 0:
+                    current_app.logger.error("THere is an issue to handle. No interest data")
+                    return False
+                list_interest_output = list(map(operator.itemgetter("interest_id"), list_output))
+                if user_id is not None:
+                    list_personal_user_output = []
+                    if self.get_personal_subcategory_interest_by_user(user_id, list_personal_user_output):
+                        current_app.logger.error("Unable to get personal user interests for user id" + user_id)
+                        return False
+                    if len(list_personal_user_output) <= 0:
+                        break
+                    list_person_user_interest = list(map(operator.itemgetter("web_subcategory_id"), list_personal_user_output))
+                    common_items = list(set(list_interest_output)&set(list_person_user_interest))
+                    if len(common_items) == page_size:
+                        continue
+                    else:
+                        for interest_row in list_output:
+                            if interest_row["interest_id"] in common_items:
+                                interest_row.update({"chosen":"yes"})
+                            else:
+                                interest_row.update({"chosen": "no"})
+                        break
+                elif friend_circle_id is not None:
+                    list_friend_circle_output = []
+                    if self.get_subcategory_interest(friend_circle_id, list_friend_circle_output):
+                        current_app.logger.error("Unable to get the interest information for friend circle id " + friend_circle_id )
+                        return False
+                    if len(list_friend_circle_output) <= 0:
+                        break
+                    list_friend_circle_interest = list(map(operator.itemgetter("web_subcategory_id"), list_friend_circle_output))
+                    common_items = list(set(list_interest_output)&set(list_friend_circle_interest))
+                    if len(common_items) == page_size:
+                        continue
+                    else:
+                        for interest_row in list_output:
+                            if interest_row["interest_id"] in common_items:
+                                interest_row.update({"chosen":"yes"})
+                            else:
+                                interest_row.update({"chosen": "no"})
+                        break
+                else:
+                    break
+            return True
+        except Exception as e:
+            current_app.logger.error("There is an exception getting the interest data " + str(e))
+            return False
     def get_category_interest(self, friend_circle_id, loutput):
         try:
             driver = NeoDB.get_session()
@@ -1418,8 +1491,8 @@ class GDBUser(Resource):
             query = "MATCH (a:User)-[r:INTEREST{friend_circle_id:$friend_circle_id_}]->(b:WebSubCat) " \
                     "RETURN count(a.user_id) as users, " \
                     "sum(r.vote) as votes, " \
-                    "b.subcategory_id as subcategory_id," \
-                    " b.subcategory_name as subcategory_name "
+                    "b.web_subcategory_id as subcategory_id," \
+                    " b.web_subcategory_name as subcategory_name "
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
                 loutput.append(record.data())
@@ -1494,7 +1567,6 @@ class GDBUser(Resource):
 
     def get_subcategory_beyond_top_node(self, lweb_subcategory_id, age_hi, age_lo, gender, loutput):
         try:
-
             driver = NeoDB.get_session()
             query = "MATCH (a:WebSubCat)" \
                     " WHERE  " \
@@ -1502,7 +1574,10 @@ class GDBUser(Resource):
                     " AND toInteger(a.age_hi) <= $age_hi_ " \
                     " AND a.gender = $gender_ " \
                     " AND a.parent_id in $web_subcategory_id_ " \
-                    " RETURN a.web_subcategory_id as web_subcategory_id, a.web_subcategory_name as web_subcategory_name"
+                    " RETURN a.web_subcategory_id as web_subcategory_id, " \
+                    " a.web_subcategory_name as web_subcategory_name," \
+                    " 'This is a description for gemift subcategory' as web_subcategory_desc, " \
+                    " 'https://www.eazypurchaseproducts.com/Easypurchase/api/s3ImgUpload/' as image_path"
             result = driver.run(query, web_subcategory_id_=lweb_subcategory_id, age_lo_=age_lo, age_hi_=age_hi,
                                 gender_=gender)
             for record in result:
@@ -1624,19 +1699,18 @@ class GDBUser(Resource):
             print("Error in executing the query", e)
             return False
 
-    def get_personal_category_interest_by_user(self, user_id, hsh_output):
+    def get_personal_category_interest_by_user(self, user_id, list_output):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (a:User)-[r:PERSONAL_INTEREST]->(b:WebCat) " \
                     "  WHERE a.user_id = $user_id_ " \
                     "RETURN r.user_id as user_id, " \
-                    "b.web_category_id as web_category_id "
+                    "b.web_category_id as web_category_id," \
+                    "b.web_category_name as web_category_name, " \
+                    " 'http://www.aws.us/' + b.image_url as image_url"
             result = driver.run(query, user_id_=user_id)
             for record in result:
-                if record["user_id"] not in hsh_output:
-                    hsh_output[record["user_id"]] = collections.defaultdict(dict)
-
-                hsh_output[record["user_id"]].update({"web_category_id": record["web_category_id"]})
+                list_output.append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -1647,20 +1721,20 @@ class GDBUser(Resource):
             print("Error in executing the query", e)
             return False
 
-    def get_personal_subcategory_interest_by_user(self, user_id, hsh_output):
+    def get_personal_subcategory_interest_by_user(self, user_id, list_output):
         try:
             driver = NeoDB.get_session()
+
             query = "MATCH (a:User)-[r:PERSONAL_INTEREST]->(b:WebSubCat) " \
                     "  WHERE a.user_id = $user_id_ " \
                     "RETURN r.user_id as user_id, " \
-                    "b.web_subcategory_id as web_subcategory_id"
+                    "b.web_subcategory_id as web_subcategory_id, " \
+                    "b.web_subcategory_name as web_subcategory_name, " \
+                    "'http://www.aws.us/' + b.web_subcategory_id as image_url"
+
             result = driver.run(query, user_id_=user_id)
             for record in result:
-                if record["user_id"] not in hsh_output:
-                    hsh_output[record["user_id"]] = collections.defaultdict(dict)
-
-                hsh_output[record["user_id"]].update(
-                    {"web_subcategory_id": record["web_subcategory_id"]})
+                list_output.append(record.data())
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -1814,8 +1888,6 @@ class GDBUser(Resource):
                      " fc.age as age," \
                      " min (case ff.user_id when $user_id_ then coalesce(ff.application_status,0) end) as contrib_status," \
                      " count(distinct ff.user_id)  as total_contributors"
-
-
             if txn is None:
                 txn = NeoDB.get_session()
 
@@ -2235,11 +2307,15 @@ class GDBUser(Resource):
         try:
             obj_search = SearchDB()
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion) " \
+            query = "MATCH (a:User)-[r:OCCASION]->(f:friend_occasion)<-[x:IS_MAPPED]-(b:occasion), (fc:friend_circle) " \
                     " WHERE " \
                     " f.friend_circle_id in $friend_circle_id_ and " \
+                    " f.friend_circle_id = fc.friend_circle_id and " \
                     " b.status_id = 1 " \
                     " RETURN a.user_id as user_id, f.occasion_date as occasion_date , " \
+                    " fc.secret_friend_name as secret_friend_first_name, " \
+                    " fc.secret_friend_last_name as secret_friend_last_name, " \
+                    " fc.friend_circle_id as friend_circle_id, " \
                     "f.occasion_id as occasion_id, b.occasion_name as occasion_name ," \
                     "b.friend_circle_id as custom_friend_circle_id," \
                     "b.occasion_frequency as occasion_frequency," \
@@ -2256,6 +2332,9 @@ class GDBUser(Resource):
                 hsh["occasion_date"] = record["occasion_date"]
                 hsh["occasion_frequency"] = record["occasion_frequency"]
                 hsh["occasion_name"] = record["occasion_name"]
+                hsh["friend_circle_id"] = record["friend_circle_id"]
+                hsh["secret_friend_first_name"] = record["secret_friend_first_name"]
+                hsh["secret_friend_last_name"] = record["secret_friend_last_name"]
                 hsh["friend_occasion_status"] = record["friend_occasion_status"]
                 hsh["occasion_active_status"] = record["active_status"]
                 hsh["product_count"] = 0
@@ -2294,6 +2373,7 @@ class GDBUser(Resource):
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
+
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
             print(e.message)
@@ -2652,21 +2732,20 @@ class GDBUser(Resource):
                     " with collect({" \
                     "t_count: count(b.subcategory_id) " \
                      " }) as puser_s_count" \
-                    " MATCH (a:User)-[r:PERSONAL_INTEREST]->(b:WebCat) " \
+                    " MATCH (a:User)-[r:PERSONAL_INTEREST]->(b:WebSubCat) " \
                     " with puser_s_count + collect({ " \
-                    " t_count: count(b:category_id)" \
-                    " }) as puser_c_ count " \
-                    " MATCH (a:User)-[r:INTEREST]->(b:WebSubCat) " \
-                    " with puser_s_count + puser_c_count + collect({" \
-                    "t_count: count(b.subcategory_id) " \
-                    " }) as user_s_count" \
+                    " t_count: count(b:subcategory_id)" \
+                    " }) as user_s_ count " \
                     " MATCH (a:User)-[r:INTEREST]->(b:WebCat) " \
                     " with puser_s_count + puser_c_count + user_s_count  + collect({ " \
                     " t_count: count(b:category_id)" \
-                    " }) as user_c_ count" \
+                    " }) as user_c_count" \
                     " UNWIND user_c_count as total_count " \
                     " with total_count.t_count " \
                     " return sum(t_count) as total_cat_scat_count "
+            query = "MATCH (a:User)-[rr]->(b:WebSubCat) " \
+                    " where type(rr) in ['INTEREST', 'PERSONAL_INTEREST']" \
+                    " return count(1) as total_interest_count"
             result = driver.run(query)
             for row in result:
                 list_output.append(row.data())
@@ -2682,11 +2761,10 @@ class GDBUser(Resource):
             return False
 
     def get_total_occasion_stats(self, list_output):
-        def get_total_friend_circle_stats(self, list_output):
             try:
                 driver = NeoDB.get_session()
                 query = "MATCH (a:friend_occasion) " \
-                        " return count(a.friend_occasion_id) as total_occasions"
+                        " return count(1) as total_occasions"
 
                 result = driver.run(query)
                 for row in result:
