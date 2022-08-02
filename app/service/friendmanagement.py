@@ -6,6 +6,8 @@ from flask_restful import Resource
 from app.model.classhelper import FriendCircleHelper
 from flask_jwt_extended import jwt_required
 from app.service.general import SiteGeneralFunctions
+from app.model.kafka_producer import KafkaMessageProducer
+import os
 from datetime import datetime, tzinfo, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -88,7 +90,6 @@ class ManageFriendCircle(Resource):
                                                  user_info["referred_user_id"])
                         return {"status": "Failure in accessing the user table for " + user_info[
                             "referred_user_id"]}, 400
-
                     if output["referred_user_id"] is not None:
                         user_info["first_name"] = output["first_name"]
                         user_info["last_name"] = output["last_name"]
@@ -101,10 +102,19 @@ class ManageFriendCircle(Resource):
                         user_info["approval_status"] = 0
                         user_info["friend_list_flag"] = "Y"
                     else:
-                        user_info["linked_status"] = 0
-                        user_info["linked_user_id"] = None
+                        if not objFriend.get_unique_friend_by_id(user_info["referred_user_id"], output):
+                            return {"status" : "System issue: Unable to find the contributor in the system."}, 400
+
+                        user_info["first_name"] = output["first_name"]
+                        user_info["last_name"] = output["last_name"]
+                        user_info["email_address"] = output["email_address"]
+                        user_info["location"] = output["location"]
+                        user_info["phone_number"] = output["phone_number"]
+                        user_info["linked_status"] = output["linked_status"]
+                        user_info["linked_user_id"] = output["linked_user_id"]
+                        user_info["gender"] = output["gender"]
                         user_info["approval_status"] = 0
-                        user_info["friend_list_flag"] = "N"
+                        user_info["friend_list_flag"] = "N" #Keep the flag as N as we want a record for every user and friend id combination
 
                 hshOutput = {}
                 if not objGDBUser.get_user_roles(user_info["referred_user_id"], user_info["referrer_user_id"],user_info["friend_circle_id"], hshOutput):
@@ -130,7 +140,7 @@ class ManageFriendCircle(Resource):
                     return {"status" : "The referrer is not part of the friend circle. Something is wrong"}, 400
 
                 if hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "N" and hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "N":
-                        return {"status": "The referrer is neither a circle creator nor a contributor"}, 400
+                        return {"status": "The referrer is neither a circle creator nor a contributor" + " user:" + str(user_info["referrer_user_id"])}, 400
 
                 if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
                     is_admin = 1
@@ -138,6 +148,15 @@ class ManageFriendCircle(Resource):
                 if not objFriend.add_friend_to_the_list_and_circle(user_info, is_admin, output):
                     current_app.logger.error("Unable to add friend as the contributore" + user_info["referred_user_id"])
                     return {"status": "Failure. Unable to add friend as contributor"}, 400
+
+                if int(os.environ.get("GEMIFT_VERSION")) == 2:
+                    if is_admin == 1:
+                        user_info.update({"info_type": "E: User Acceptance Required"})
+                    else:
+                        user_info.update({"info_type": "E: Approval Required"})
+                    kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
+                                                          current_app.config["KAFKA_FRIEND_EMAIL_TOPIC"])
+                    kafka_producer.send_msg(json.dumps(user_info))
 
                 if is_admin == 1:
                     current_app.logger.error("Reffered friend is successfully added" + user_info["referred_user_id"])
@@ -229,13 +248,21 @@ class ManageFriendCircle(Resource):
                     print("Unable to insert friend into the friend list " + user_info["email_address"])
                     return {"status": "Unable to insert friend into the friend list " + user_info["email_address"]}, 400
 
+                if int(os.environ.get("GEMIFT_VERSION")) == 2:
+                    if is_admin == 1:
+                        user_info.update({"info_type": "NE: User Acceptance Required"})
+                    else:
+                        user_info.update({"info_type": "NE: Approval Required"})
+                    kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
+                                                          current_app.config["KAFKA_FRIEND_EMAIL_TOPIC"])
+                    kafka_producer.send_msg(json.dumps(user_info))
+
                 if is_admin:
                     return {"Status": "User added. They need to accept the invite and join"}, 200
                 else:
                     return {"status" : "Successfully added. The user has to be approved by the admin"}, 200
             if request_id == 3:
                 output = {}
-                print ("Calling request 3 function")
 
                 if objGDBUser.check_friend_circle_with_admin_and_secret_friend(user_info["referrer_user_id"],
                                                                                user_info["referred_user_id"],
@@ -246,25 +273,34 @@ class ManageFriendCircle(Resource):
                     print( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
                     current_app.logger.error( "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend")
                     return {"status": "Unable to create a friend circle with " + user_info["referred_user_id"] + " as secret friend"}, 400
+
+                user_info.update({"info_type": "SF: Secret Friend For Search"})
+                if int(os.environ.get("GEMIFT_VERSION")) == 2:
+                    kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
+                                                          current_app.config["KAFKA_SECRET_FRIEND_QUEUE"])
+                    kafka_producer.send_msg(json.dumps(user_info))
                 return {"status" : json.loads(json.dumps(output))}, 200
             if request_id == 4:
                 #if user_info["email_address"] is None or user_info["referrer_user_id"] is None: #phone primary key support
                 if user_info["phone_number"] is None or user_info["referrer_user_id"] is None:
                     return {"status" : "Failure. phone number and/or referrer user id cannot be null"}
-                # if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_email(user_info["referrer_user_id"],
-                #                                                                         user_info["phone_number"],
-                #                                                                         output) :
-                #phone primary key support
+
 
                 if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_phone(user_info["referrer_user_id"],user_info["phone_number"], output):
                     if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
                         return {"status" : "secret circle for this email exists"}, 400
                 output = {}
+                user_info.update({"info_type": "SF: Secret Friend For Search"})
+
                 if objFriend.create_secret_friend(user_info, output):
                     return {"status": json.loads(json.dumps(output))}, 200
                 else:
                     return {"status" : "Failure. Unable to create friend circle"}, 401
 
+                if int(os.environ.get("GEMIFT_VERSION")) == 2:
+                    kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
+                                                          current_app.config["KAFKA_SECRET_FRIEND_QUEUE"])
+                    kafka_producer.send_msg(json.dumps(user_info))
             if request_id == 5: # this is for whatsapp integration
                 print ("The user list is ", user_list)
                 objFriendCircleHelper = FriendCircleHelper()
@@ -289,6 +325,12 @@ class ManageFriendCircle(Resource):
                     current_app.logger.error("Unable to process the approval request")
                     return {"status" : "Failure: Unable to complete the operation"}, 400
                 return {"status" : "Success"}, 200
+
+            if request_id == 8: # Delete a member from the friend circle
+                pass
+
+            if request_id == 9: # Delete the friend circle
+                pass
 
 
             if request_id == 100: # purely for testing purposes
@@ -394,7 +436,6 @@ class InterestManagement(Resource):
                 print ("The request is", request.path, request.host_url, request.date, request.blueprint, request.endpoint, request.environ)
                 hshOutput = {}
                 if objGDBUser.check_user_in_friend_circle( referred_user_id, friend_circle_id, hshOutput) :
-
                     if len(hshOutput) > 0 and  hshOutput["relation_type"] != "SECRET_FRIEND":
                         if list_category_id is not None:
                             if len(list_category_id) > 0  and not objGDBUser.link_user_to_web_category(referred_user_id, friend_circle_id, list_category_id):
@@ -408,6 +449,17 @@ class InterestManagement(Resource):
                     print ("The user is not part of the circle or a secret friend trying to hack the circle")
                     return {"status": "Failure"}, 400
             return {"status": "success"}, 200
+
+            if request_id == 2: # Map brands to friend_circle
+                list_brand = []
+                list_brand = content["list_brand"] if "list_brand" in content else None  # this should be list of hashs with each member having category_id and vote
+                if len(list_brand) <= 0:
+                    return {"status": "Brand is required"}, 400
+                if objGDBUser.assign_brand_to_friend_circle(user_id, friend_circle_id, l_brand):
+                    current_app.logger.error("Unable to map brands to friend circle")
+                    return {"status": "Failure"}, 400
+
+
         except Exception as e:
             print ("The error is " , e)
             return {"status":"Failure"}, 400
@@ -420,6 +472,24 @@ class InterestManagement(Resource):
         age =  request.args.get("age", type=int)
         gender = request.args.get("gender", type=str)
         request_id = request.args.get("request_id", type=int)
+        page_size = request.args.get("page_size", type = int)
+        page_number = request.args.get("page_number", type=int)
+        raw_subcategory_list = request.args.getlist("subcategory_list")
+
+        gender_list = ["M","F","A"]
+        sstr = "("
+        is_weird = 0
+        for occ in raw_subcategory_list:
+            if str(occ).find(sstr) >= 0:
+                occ = occ.replace('(', " ")
+                occ = occ.replace(')', " ")
+                occ = occ.replace('"', " ")
+                occ = occ.replace(" ", "")
+                subcategory_list = list(occ.split(","))
+                is_weird = 1
+        if not is_weird:
+            subcategory_list = raw_subcategory_list
+
         objGDBUser = GDBUser()
         loutput = []
 
@@ -435,7 +505,7 @@ class InterestManagement(Resource):
         if request_id == 2:
             hsh = {}
             objFriend = FriendListDB()
-
+            objGDBUser = GDBUser()
             if age is None or gender is None:
                 if not objGDBUser.get_friend_circle_attributes(friend_circle_id, hsh):
                     current_app.logger.error("Unable to get friend circle_attributes")
@@ -483,14 +553,120 @@ class InterestManagement(Resource):
             return {'categories': json.loads(json.dumps(loutput)), "subcategories":json.loads(json.dumps(loutput1))}, 200
 
         if request_id == 4: # get the recently added interest for a given friend_circle
-            objGDBUser = GDBUser()
             list_output = []
             if objGDBUser.get_recently_added_interest(friend_circle_id, list_output):
                 return {"status" : "Failure in getting the recently added interest"}, 400
             return {"interest": json.dumps(json.loads(list_output))}, 200
 
-# Here is how the occasion management has been implemented.
+        if request_id == 5: # get brands
+            loutput = []
+            if objGDBUser.get_brands(loutput):
+                current_app.logger.error("Unable to get brands")
+                return {"status": "Failure: Unable to get brands"}, 400
+            return {"brand": json.dumps(json.loads(loutput))}, 200
 
+        if request_id == 6: # get brands by subcategory
+            loutput = []
+            if objGDBUser.get_brands_by_subcategory(subcategory_list,loutput):
+                current_app.logger.error("Unable to get brands")
+                return {"status": "Failure: Unable to get brands"}, 400
+            return {"brand": json.dumps(json.loads(loutput))}, 200
+
+
+        if request_id == 7: # get brands by friend_circle
+            loutput = []
+            if objGDBUser.get_brands_by_friend_circle(friend_circle_id,loutput):
+                current_app.logger.error("Unable to get brands")
+                return {"status": "Failure: Unable to get brands"}, 400
+            return {"brand": json.dumps(json.loads(loutput))}, 200
+
+        if request_id == 8: # get the nodes for a give parent
+            hsh = {}
+            objFriend = FriendListDB()
+            objGDBUser = GDBUser()
+            if age is None or gender is None:
+                if not objGDBUser.get_friend_circle_attributes(friend_circle_id, hsh):
+                    current_app.logger.error("Unable to get friend circle_attributes")
+                    return {"status": "Failure: Unable to get the age and gender from friend circle"}, 400
+                age = hsh["age"]
+                gender = hsh["gender"]
+            else:
+                if not objFriend.update_gender_age(friend_circle_id,gender, age):
+                    current_app.logger.error("Unable to update the friend circle with age or gender")
+                    return {"status": "Failure: Unable to update the friend circle with the given data"}
+            if age is None:
+                if not objGDBUser.get_age_from_occasion(friend_circle_id, hsh):
+                    current_app.logger.error("Error in getting teh age for the secret friend")
+                    return {"status": "Failure:Error in getting the age"}, 400
+                age = hsh["age"]
+                if ("lo" not in hsh   or "hi" not in hsh) or (hsh["lo"] is None or hsh["hi"] is None):
+                    current_app.logger.error("Age hi or lo is missing or invalid")
+                    return {"status":"Failure: Unable to get age range"}, 400
+            # if gender is None:
+            #     current_app.logger.error("gender cannot be none and it is")
+            #     return {"status" : "Failure: Unable to get the gender"}, 400
+
+            if not SiteGeneralFunctions.get_age_range(int(age), hsh):
+                current_app.logger.error("Unable to get age range")
+                return {"status": "Failure: Unable to get age range"}, 400
+            if not objGDBUser.get_subcategory_beyond_top_node(subcategory_list, hsh["hi"], hsh["lo"], gender, loutput):
+                current_app.logger.error(
+                    "Unable to get smarter recommendation for friend circle id" + friend_circle_id)
+                return {"status": "Failure in getting recommendation"}, 401
+            return {"subcategory": json.loads(json.dumps(loutput))}, 200
+
+        if request_id == 9: # get category or sub category nodes for a given parent for registered user
+            hsh = {}
+            if user_id is None or gender is None or age is None:
+                return {"status": " One or many of the expected parameters missing ( user_id, gender, age)"}, 400
+            if not SiteGeneralFunctions.get_age_range(int(age), hsh):
+                current_app.logger.error("Unable to get age range")
+                return {"status": "Failure: Unable to get age range"}, 400
+            if int(age) == 0:
+                hsh["hi"] = 99
+                hsh["lo"] = 0
+            if not objGDBUser.get_subcategory_beyond_top_node(subcategory_list, hsh["hi"], hsh["lo"], gender, loutput):
+                current_app.logger.error(
+                    "Unable to get smarter recommendation for friend circle id" + friend_circle_id)
+                return {"status": "Failure in getting recommendation"}, 401
+            return {"subcategory": json.loads(json.dumps(loutput))}, 200
+        if request_id == 10: # v2 interest API
+            hsh = {}
+            objFriend = FriendListDB()
+            objGDBUser = GDBUser()
+            if (age is None or gender is None) and (friend_circle_id is not None and len(friend_circle_id.strip()) == 35):
+                if not objGDBUser.get_friend_circle_attributes(friend_circle_id, hsh):
+                    current_app.logger.error("Unable to get friend circle_attributes")
+                    return {"status": "Failure: Unable to get the age and gender from friend circle"}, 400
+                age = hsh["age"]
+                gender = hsh["gender"]
+            elif gender is not None and age is not None and (friend_circle_id is not None and len(friend_circle_id.strip()) == 35):
+                if not objFriend.update_gender_age(friend_circle_id, gender, age):
+                    current_app.logger.error("Unable to update the friend circle with age or gender")
+                    return {"status": "Failure: Unable to update the friend circle with the given data"}
+
+
+            if age is None:
+                if (friend_circle_id is not None and len(friend_circle_id.strip()) == 35):
+                    if not objGDBUser.get_age_from_occasion(friend_circle_id, hsh):
+                        current_app.logger.error("Error in getting teh age for the secret friend")
+                        return {"status": "Failure:Error in getting the age"}, 400
+                    if "age" not in hsh:
+                        age = 0
+                    age = hsh["age"]
+
+            if gender.strip() is not None and len(gender.strip()) > 0 and gender.strip() not in gender_list:
+                current_app.logger.error("Unknown gender value passed")
+                return {"status": "Unknown gender value passed"}, 400
+            if age is None:
+                age = 0
+            if not objGDBUser.get_interest_v2( age, gender, page_size, page_number,loutput):
+                current_app.logger.error(
+                    "Unable to get smarter recommendation for friend circle id" )
+                return {"status": "Failure in getting recommendation"}, 401
+            return {"subcategory": json.loads(json.dumps(loutput))}, 200
+
+# Here is how the occasion management has been implemented.
 
 # Any user from the friend circle can set the occasion for the secret friend
 # Any occasion set by a member of the friend circle will be approved by the admin of the friend circle.
@@ -528,16 +704,21 @@ class OccasionManagement(Resource):
         status = 0
         if request_id == 1:  # add occasion
             print ("Inside occasion request 1")
+            if len(occasion_id) > 14:
+                return {"status": "Occasion id is not a standard occasion"}, 400
+
             if objGDBUser.add_occasion(creator_user_id, friend_circle_id, occasion_id, occasion_date,occasion_timezone, status, output_hash):
                 return {"status": "Success"}, 200
             else:
-                print ("Failure in adding occasion")
+                print ("Failure in adding occasion or occasion already exists")
                 return {"Status:": "Failure"}, 500
+
         if request_id == 2:  # vote for occasion
             if objGDBUser.vote_occasion( creator_user_id, friend_circle_id, occasion_id, flag, value, value_timezone, output_hash):
                 return {"status" : "Success"}, 200
             else:
                 return {"Failure:": "Error in voting for the occasion"}, 500
+
         if request_id == 3:
             status = 1
             if objGDBUser.approve_occasion(creator_user_id, friend_circle_id, occasion_id, status, output_hash):
@@ -559,6 +740,13 @@ class OccasionManagement(Resource):
             if not objGDBUser.deactivate_occasion(occasion_id, friend_circle_id):
                 return {"status" : "Failure: occasion not deactivated"}, 400
             return {"status" : "Successfully deactivated"}, 200
+
+        if request_id == 6:  # reactivate custom occasion. This would require custom_occasion_id, admin_user_id
+            if occasion_id is None or friend_circle_id is None:
+                return {"status": "Failure: Missing parameters"}
+            if not objGDBUser.reactivate_occasion(occasion_id, friend_circle_id):
+                return {"status": "Failure: occasion not deactivated"}, 400
+            return {"status": "Successfully deactivated"}, 200
 
     @jwt_required()
     def update(self):

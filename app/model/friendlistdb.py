@@ -1,4 +1,6 @@
 import json
+import os
+
 import neo4j.exceptions
 import logging
 from flask import current_app, g
@@ -134,7 +136,8 @@ class FriendListDB:
             hshOutput["referred_user_id"] = None
             query = "MATCH (a:friend_list)" \
                     " WHERE " \
-                    " a.user_id = $user_id_ " \
+                    " a.user_id = $user_id_ and " \
+                    " a.first_name is not null " \
                     " RETURN a.user_id as user_id, a.email_address as email_address, " \
                     "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location," \
                     "a.linked_status as linked_status, a.linked_user_id as linked_user_id, a.approval_status as approval_status," \
@@ -547,10 +550,11 @@ class FriendListDB:
                     return False
                 objMongo = MongoDBFunctions()
                 hshuser["user_id"] = hshuser["referrer_user_id"]
-                if not objMongo.insert_user(hshuser):
-                    txn.rollback()
-                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                    return False
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    if not objMongo.insert_user(hshuser):
+                        txn.rollback()
+                        current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                        return False
             if admin_flag == 1:
                 fquery = "MATCH  (n:friend_list), (fc:friend_circle) " \
                          " WHERE n.user_id = $user_id_ " \
@@ -581,15 +585,16 @@ class FriendListDB:
                     return False
                 loutput["data"] = list_output
             else:
-                objMongo = MongoDBFunctions()
-                hshuser["user_type"] = "Existing"
-                hshuser["comm_type"] = "Email"
-                if not objMongo.insert_approval_queue(hshuser):
-                    txn.rollback()
-                    current_app.logger.error(
-                        "Unable to insert the record into the approval queue for " + hshuser["email_address"])
-                    print("Unable to insert the record into the approval queue for " + hshuser["email_address"])
-                    return False
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    objMongo = MongoDBFunctions()
+                    hshuser["user_type"] = "Existing"
+                    hshuser["comm_type"] = "Email"
+                    if not objMongo.insert_approval_queue(hshuser):
+                        txn.rollback()
+                        current_app.logger.error(
+                            "Unable to insert the record into the approval queue for " + hshuser["email_address"])
+                        print("Unable to insert the record into the approval queue for " + hshuser["email_address"])
+                        return False
             txn.commit()
             return True
         except neo4j.exceptions.Neo4jError as e:
@@ -630,6 +635,9 @@ class FriendListDB:
             # if objUser.get_user_by_email(hshuser["email_address"], user_output): # phone primary key support
             if objUser.get_user_by_phone(hshuser["phone_number"], user_output):
                 if "user_id" in user_output and user_output["user_id"] is not None:
+                    if user_output["user_id"] == hshuser["referrer_user_id"] :
+                        current_app.logger.error("Creator of the friend circle cannot be the secret friend")
+                        return False
                     hshuser["linked_status"] = 1
                     hshuser["linked_user_id"] = user_output["user_id"]
                     user_exists = 1
@@ -648,6 +656,9 @@ class FriendListDB:
                 return False
             else:
                 if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
+                    if user_output["referred_user_id"] == hshuser["referrer_user_id"]:
+                        current_app.logger.error("Creator cannot be the secret friend")
+                        return False
                     friend_exists = "Y"
                     if user_exists == 0:
                         hshuser["linked_status"] = user_output["linked_status"]
@@ -672,11 +683,13 @@ class FriendListDB:
                     key = str(hshuser["referrer_user_id"]) + str(hshuser["phone_number"])
                     referred_user_id = output_hash[key]["user_id"]
                 hshuser["user_id"] = referred_user_id  # Need this for mongo insert
-                objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(hshuser):
-                    txn.rollback()
-                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                    return False
+
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    objMongo = MongoDBFunctions()
+                    if not objMongo.insert_user(hshuser):
+                        txn.rollback()
+                        current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                        return False
             if hshuser["group_name"] is None:
                 hshuser["group_name"] = "Friend circle name " + hshuser["first_name"] + " " + hshuser["last_name"]
 
@@ -712,6 +725,10 @@ class FriendListDB:
             friend_exists = "N"
             objUser = GDBUser()
             record_exists = 0
+
+            if hshuser["referred_user_id"] == hshuser["referrer_user_id"]:
+                current_app.logger.error("Referrer cannot be the secret friend of the group")
+                return False
 
             if objUser.get_user_by_id(hshuser["referrer_user_id"], referrer_output):
                 if "user_id" not in referrer_output:
@@ -769,10 +786,12 @@ class FriendListDB:
                 print("Unable to insert the email address into friend circle " + user_output["email_address"])
                 return False
             objMongo = MongoDBFunctions()
-            if not objMongo.insert_user(user_output):
-                txn.rollback()
-                current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                return False
+
+            if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                if not objMongo.insert_user(user_output):
+                    txn.rollback()
+                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                    return False
 
             friend_circle_hash = {}
             if not self.insert_friend_circle(hshuser["referred_user_id"], hshuser["referrer_user_id"],
@@ -811,11 +830,12 @@ class FriendListDB:
                 key = str(hshuser["referrer_user_id"]) + str(hshuser["phone_number"])
                 hshuser["referred_user_id"] = output_hash[key]["user_id"]
                 hshuser["user_id"] = hshuser["referred_user_id"]
-                objMongo = MongoDBFunctions()
-                if not objMongo.insert_user(hshuser):
-                    txn.rollback()
-                    current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
-                    return False
+                if int(os.environ.get("GEMIFT_VERSION")) != 2:
+                    objMongo = MongoDBFunctions()
+                    if not objMongo.insert_user(hshuser):
+                        txn.rollback()
+                        current_app.logger.error("Unable to insert the user to the search db" + hshuser["referred_user_id"])
+                        return False
             else:
                 hshuser["referred_user_id"] = hshuser["user_id"]
                 hshuser["referrer_user_id"] = hshuser["friend_id"]
@@ -1138,8 +1158,7 @@ class FriendListDB:
             if image_type == "user":
                 query = " MATCH  (n:User{user_id:$user_id_}) " \
                     " SET n.image_url = $image_url_ ," \
-                    " n.updated_dt = $updated_dt_" \
-                    " WHERE n.user_id = $user_id_"
+                    " n.updated_dt = $updated_dt_"
                 result = driver.run(query, user_id_=entity_id,
                                     updated_dt_=self.get_datetime(),
                                     image_url_ = image_url)

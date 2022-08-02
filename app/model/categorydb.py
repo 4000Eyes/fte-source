@@ -116,28 +116,38 @@ class CategoryManagementDB(Resource):
             print ("The error is", e.message)
             return False
 
-    def add_web_subcategory(self, web_subcategory_name, description, age_lo, age_hi, gender, output):
+    def add_web_subcategory(self, web_subcategory_id, web_subcategory_name, description, parent_id, age_lo, age_hi, gender,image_url,output):
         try:
             driver = NeoDB.get_session()
             query = "MERGE (a:WebSubCat{web_subcategory_name:$web_subcategory_name_}) " \
                     " ON MATCH set  " \
-                    " a.updated_dt = $updated_dt_ " \
-                    "ON CREATE set a.web_subcategory_id = $web_id_, " \
-                    "a.web_subcategory_name = $web_subcategory_name_, " \
-                    "a.created_dt = $created_dt_ ," \
+                    " a.updated_dt = $updated_dt_ ," \
+                    " a.parent_id = $parent_id_, " \
                     "a.description=$description_ ," \
                     "a.age_hi = $age_hi_," \
                     "a.age_lo = $age_lo_," \
-                    "a.gender = $gender_ " \
+                    "a.gender = $gender_, " \
+                    "a.image_url = $image_url_ " \
+                    "ON CREATE set a.web_subcategory_id = $web_id_, " \
+                    "a.web_subcategory_name = $web_subcategory_name_, " \
+                    "a.created_dt = $created_dt_ ," \
+                    "a.parent_id = $parent_id_," \
+                    "a.description=$description_ ," \
+                    "a.age_hi = $age_hi_," \
+                    "a.age_lo = $age_lo_," \
+                    "a.gender = $gender_, " \
+                    "a.image_url = $image_url_ " \
                     "RETURN a.web_subcategory_id"
-            result = driver.run(query, web_id_= self.get_id(),
+            result = driver.run(query, web_id_= web_subcategory_id,
                                 web_subcategory_name_=web_subcategory_name,
                                 description_ = description,
                                 updated_dt_ = self.get_datetime(),
                                 created_dt_ = self.get_datetime(),
                                 age_lo_ = age_lo,
                                 age_hi_ = age_hi,
-                                gender_ = gender)
+                                gender_ = gender,
+                                image_url_ = image_url,
+                                parent_id_ = parent_id)
 
             record = result.single()
             if record["a.web_subcategory_id"]:
@@ -148,6 +158,7 @@ class CategoryManagementDB(Resource):
         except neo4j.exceptions.Neo4jError as e:
             print ("The error is", e.message)
             return False
+
     def link_subcategory(self, web_category_id, web_subcategory_id, output):
         try:
             driver = NeoDB.get_session()
@@ -241,15 +252,18 @@ class CategoryManagementDB(Resource):
             current_app.logger.error("Error in linking brand to subcategory" + e)
             return False
 
-    def get_web_category(self, friend_circle_id, output):
+    # def get_web_category(self, friend_circle_id, output): No need for friend circle id with the new implementation.
+    def get_web_category(self, output):
         try:
             driver = NeoDB.get_session()
-            query =  "match (a:WebCat) " \
-                     "where not exists { match (a)<-[r:INTEREST]-(u:User) where r.friend_circle_id = $friend_circle_id_ }  " \
+            query = "match (a:WebCat) " \
                      "return a.web_category_id as web_category_id, a.web_category_name as web_category_name"
+            #query = "match (a:WebCat) " \
+            #        "where not exists { match (a)<-[r:INTEREST]-(u:User) where r.friend_circle_id = $friend_circle_id_ }  " \
+            #         "return a.web_category_id as web_category_id, a.web_category_name as web_category_name"
 
-            result = driver.run(query, friend_circle_id_ = friend_circle_id
-                                )
+            #result = driver.run(query, friend_circle_id_ = friend_circle_id)
+            result = driver.run(query)
             if result is None:
                 return False
             for record in result:
@@ -280,6 +294,31 @@ class CategoryManagementDB(Resource):
         except neo4j.exceptions.Neo4jError as e:
             print ("The error message is ", e.message)
             return False
+
+    def get_distinct_category_subcategory(self, output):
+        try:
+            driver = NeoDB.get_session()
+            query = "match (a:WebCat), (b:WebSubCat)" \
+                    " where a.web_category_id = b.parent_id " \
+                     "return a.web_category_id as category_id, a.web_category_name as category_name," \
+                    " b.web_subcategory_id as subcategory_id, b.web_subcategory_name as subcategory_name"
+            #query = "match (a:WebCat) " \
+            #        "where not exists { match (a)<-[r:INTEREST]-(u:User) where r.friend_circle_id = $friend_circle_id_ }  " \
+            #         "return a.web_category_id as web_category_id, a.web_category_name as web_category_name"
+
+            #result = driver.run(query, friend_circle_id_ = friend_circle_id)
+            result = driver.run(query)
+            if result is None:
+                return False
+            for record in result:
+                output.append(record.data())
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            print("The error message is ", e.message)
+            return False
+        except Exception as e:
+            print ("The error message is ", e)
+            return  False
 
     def get_brands(self, age_lo, age_hi, gender, output):
         try:

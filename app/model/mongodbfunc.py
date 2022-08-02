@@ -117,3 +117,39 @@ class MongoDBFunctions():
             current_app.logger.error(e)
             print("The error is ", e)
             return False
+
+    def get_interest(self, age, gender, page_size, page_number, list_output):
+        try:
+            interest_collection = pymongo.collection.Collection(g.db, "interests")
+            skip_size = page_size * ( page_number - 1 )
+            """
+            result = interest_collection.find(
+                {"age_lo": {"$gte", age_lo}},
+                {"age_hi": {"$lte", age_hi}},
+                {"gender": gender}).skip(int(skip_size)).limit(page_size)
+            """
+            if age > 0 and gender is not None:
+                result = interest_collection.aggregate([{"$match": {"$and":[{"age_lo": {"$lte" : age}},
+                                                            {"age_hi": {"$gte" : age}}, {"gender": gender}]}},
+                                                     {"$project": {"interest_id": 1, "interest_name": 1, "image_url":1}},
+                                                     {"$sort": {"interest_id": pymongo.ASCENDING}},
+                                                    {"$skip": skip_size},
+                                                        {"$limit": page_size}
+                                                     ])
+
+            else:
+                result = interest_collection.aggregate([
+                                                     {"$project": {"interest_id": 1, "interest_name": 1, "image_url":1}},
+                                                     {"$sort": {"interest_id": pymongo.ASCENDING}},
+                                                    {"$skip": skip_size},
+                                                        {"$limit": page_size}
+                                                     ])
+            for row in result:
+                list_output.append({"interest_id":row["interest_id"], "interest_name":row["interest_name"], "image_url":row["image_url"]})
+            return True
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+
+

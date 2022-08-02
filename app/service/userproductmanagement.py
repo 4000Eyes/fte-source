@@ -17,40 +17,87 @@ class UserProductManagement(Resource):
         try:
             content={}
             content["request_id"] = request.args.get("request_id",type=int)
-            content["product_id"] = request.args.getlist("product_id", type=int)
+            content["price_to"] = request.args.get("price_to", type=float)
+            content["price_from"] = request.args.get("price_from", type=float)
+            content["product_id"] = request.args.getlist("product_id", type=str)
             content["sort_order"] = request.args.get("sort_order",type=str)
-            content["subcategory"] = request.args.getlist("subcategory_list")
-            content["category"] = request.args.getlist("category_list")
-            content["color"] = request.args.getlist("color_list")
-            raw_list = request.args.getlist("occasion_list")
-            # #regex = re.compile('[@_!#$%^&*()<>?/\|}{~:]')
-            regex = re.compile('()')
-            is_weird = 0
-            sstr = "("
-            for occ in raw_list:
-                if str(occ).find(sstr) >= 0:
-                    occ = occ.replace('(', " ")
-                    occ = occ.replace(')', " ")
-                    occ = occ.replace('"'," ")
-                    occ = occ.replace(" ","")
-                    content["occasion"] = list(occ.split(","))
-                    is_weird = 1
-            if not is_weird:
-                content["occasion"] = request.args.get("occasion_list")
-
             content["friend_circle_id"] = request.args.get("friend_circle_id", type=str)
             content["user_id"] = request.args.get("user_id", type=str)
             content["occasion_name"] = request.args.get("occasion_name", type=str)
             content["occasion_year"] = request.args.get("occasion_year", type=str)
             content["comment"] = request.args.get("comment", type=str)
             content["vote"] = request.args.get("vote", type=int)
-            content["age"] = request.args.get("age", type=str)
+            content["age"] = request.args.get("age", type=int)
+            content["color"] = request.args.getlist("color_list")
+            raw_occasion_list = request.args.getlist("occasion_list")
+            content["page_size"] = request.args.get("page_size", type=int)
+            content["page_number"] = request.args.get("page_number", type=int)
 
             print ("The values are", content["request_id"], content["product_id"])
-            if content is None:
-                return {"status": "Failure"}, 400
+
             if "request_id" not in content:
                 return {"status": "Input argument (request_id) is empty"}, 400
+
+            # #regex = re.compile('[@_!#$%^&*()<>?/\|}{~:]')
+            #regex = re.compile('()')
+            is_weird = 0
+            sstr = "("
+            for occ in raw_occasion_list:
+                if str(occ).find(sstr) >= 0:
+                    occ = occ.replace('(', " ")
+                for occasion_id in raw_occasion_list:
+                    if len(occasion_id) > 14: # GEM-OCC-000100. STANDARD
+                        objGDBUser = GDBUser()
+                        list_occasion_name = []
+                        if not objGDBUser.get_occasion_names(list_occasion_name, content["friend_circle_id"]):
+                            current_app.logger.error("Unable to get the occasion names for this occasion id")
+                            return False
+                        if len(list_occasion_name) > 0:
+                            content["occasion"] = []
+                            for occasion_row in list_occasion_name:
+                                content["occasion"].append(occasion_row["occasion_id"])
+                if "occasion" not in content or len(content["occasion"]) <= 0:
+                    content["occasion"] = raw_occasion_list
+
+            is_weird = 0
+            raw_category_list = request.args.getlist("category_list")
+            for occ in raw_category_list:
+                if str(occ).find(sstr) >= 0:
+                    occ = occ.replace('(', " ")
+                    occ = occ.replace(')', " ")
+                    occ = occ.replace('"'," ")
+                    occ = occ.replace(" ","")
+                    content["category"] = list(occ.split(","))
+                    is_weird = 1
+            if not is_weird:
+                content["category"] = raw_category_list
+
+
+            is_weird = 0
+            raw_subcategory_list = request.args.getlist("subcategory_list")
+            for occ in raw_subcategory_list:
+                if str(occ).find(sstr) >= 0:
+                    occ = occ.replace('(', " ")
+                    occ = occ.replace(')', " ")
+                    occ = occ.replace('"'," ")
+                    occ = occ.replace(" ","")
+                    content["subcategory"] = list(occ.split(","))
+                    is_weird = 1
+            if not is_weird:
+                content["subcategory"] = raw_subcategory_list
+
+            is_weird = 0
+            raw_gender_list = request.args.getlist("gender_list")
+            for occ in raw_gender_list:
+                if str(occ).find(sstr) >= 0:
+                    occ = occ.replace('(', " ")
+                    occ = occ.replace(')', " ")
+                    occ = occ.replace('"'," ")
+                    occ = occ.replace(" ","")
+                    content["gender"] = list(occ.split(","))
+                    is_weird = 1
+            if not is_weird:
+                content["gender"] = raw_gender_list
 
             output_list = []
             objSearch = SearchDB()
@@ -70,63 +117,41 @@ class UserProductManagement(Resource):
 
                 hsh = {}
                 hage = {}
-                if content["friend_circle_id"] is not None:
+
+                if content["age"] is None and content["friend_circle_id"] is not None:
                     if not objGDBUser.get_friend_circle_attributes(content["friend_circle_id"], hsh):
                         current_app.logger.error("Unable to get friend circle_attributes")
                         return {"status": "Failure: Unable to get the age and gender from friend circle"}, 400
-                    age = hsh["age"] if "age" in hsh else 0
-                    gender = hsh["gender"] if "gender" in hsh else None
-                    if age:
-                        if not SiteGeneralFunctions.get_age_range(int(age), hage):
-                            current_app.logger.error("Unable to get age range")
-                            return {"status": "Failure: Unable to get age range"}, 400
-                        content["age_floor"] = hage["lo"]
-                        content["age_ceiling"] = hage["hi"]
+                    content["age"] = hsh["age"] if "age" in hsh else 0
+                    if "gender" not in content or content["gender"] is None:
+                        content["gender"] = hsh["gender"] if "gender" in hsh else None
 
-                    lcat = []
-                    lsubcat = []
+                    if content["age"] is None or int(content["age"]) <= 0 or content["gender"] is None or \
+                            len(set(content["gender"])& set( ["M","F","A"])) != len(content["gender"]):
+                        current_app.logger.error ("Age and gender do not have valid values")
+                        return False
 
-                    if objGDBUser.get_category_interest(content["friend_circle_id"], lcat):
-                        print("successfully retrieved the interest categories for friend circle id:", content["friend_circle_id"])
-                    else:
-                        return {"status": "failure: Unable to get the categoriies for the friend circle id"}, 400
+                lcat = []
+                lsubcat = []
+
+
+                if len(content["subcategory"]) <= 0:
                     if objGDBUser.get_subcategory_interest(content["friend_circle_id"], lsubcat):
                         print("successfully retrieved the interest categories for friend circle id:", content["friend_circle_id"])
                     else:
                         return {"status": "failure: Unable to get subcategories for the friend circle id"}, 400
-                    if len(lcat) > 0:
-                        content["category"] = []
-                        for row in lcat:
-                            if row["category_id"] is not None:
-                                content["category"].append(row["category_id"])
+
                     if len(lsubcat) > 0:
                         content["subcategory"] = []
                         for row in lsubcat:
                             if row["subcategory_id"] is not None:
                                 content["subcategory"].append(row["subcategory_id"])
 
-                if content["age"] is not None:
-                    if not SiteGeneralFunctions.get_age_range(int(age), hage):
-                        current_app.logger.error("Unable to get age range")
-                        return {"status": "Failure: Unable to get age range"}, 400
-
-                    content["age_floor"] = hage["lo"]
-                    content["age_ceiling"] = hage["hi"]
-
-                if content["age_floor"] is None or content["age_ceiling"] is None:
-                    #default
-                    content["age_floor"] = 20
-                    content["age_ceiling"] = 80
-
-                if "age_floor" not in content or \
-                        "age_ceiling" not in content or \
-                        "sort_order" not in content:
-                    current_app.logger.error(
-                        "Age floor , age ceiling, sort order are required for any search and one or more is missing")
-                    print("Key attributes age floor, ceilinng, sort order is missing")
-                    return {"status": "failure. missing key inputs age floor or age celing or sort order"}, 400
-
+                if content["page_size"] is None or content["page_number"] is None or "sort_order" not in content:
+                    current_app.logger.error("Page size or page number cannot be null")
+                    return False
                 loutput = []
+
                 if objSearch.search_gemift_products(content, output_list):
                     print("The result is ", output_list)
                     return {"data": json.loads(json_util.dumps(output_list))}, 200

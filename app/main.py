@@ -40,7 +40,6 @@ def create_app(config_name: str):
     }
     app.config['MONGO_URI'] = "mongodb+srv://krisraman:1RyrVRJQCBMIdG77@gemiftcluster.qwn4p.mongodb.net/sample_airbnb"
     app.config['SECURITY_PASSWORD_SALT'] = 'Dx^&32hjeh'
-    print ("Connected to mongo db ")
     jwt.init_app(app)
     flask_bcrypt.init_app(app)
     dbx.init_app(app)

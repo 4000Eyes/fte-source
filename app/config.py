@@ -37,7 +37,10 @@ class DevelopmentConfig(Config):
     REDIS_PORT=6379
     REDIS_PASSWORD="rajuvedu123@"
     REDIS_DBNAME=0
-
+    KAFKA_BROKER="localhost:9092"
+    KAFKA_USER_EMAIL_TOPIC="gemift_user"
+    KAFKA_FRIEND_EMAIL_TOPIC="gemift_friend"
+    KAFKA_SECRET_FRIEND_QUEUE="gemift_secret_friend"
     # File Logging Setup
     LOG_TYPE="stream"
     LOG_DIR = "/logs"
@@ -67,6 +70,10 @@ class TestingConfig(Config):
     REDIS_PORT=6379
     REDIS_PASSWORD="rajuvedu123@"
     REDIS_DBNAME=0
+    KAFKA_BROKER="localhost:9092"
+    KAFKA_USER_EMAIL_TOPIC="gemift_user"
+    KAFKA_FRIEND_EMAIL_TOPIC="gemift_friend"
+    KAFKA_SECRET_FRIEND_QUEUE="gemift_secret_friend"
     # File Logging Setup
     LOG_DIR = "/home/krissrinivasan/python/logs"
     APP_LOG_NAME = "app.log"
@@ -95,6 +102,10 @@ class ProductionConfig(Config):
     REDIS_PORT=6379
     REDIS_PASSWORD="rajuvedu123@"
     REDIS_DBNAME=0
+    KAFKA_BROKER="localhost:9092"
+    KAFKA_USER_EMAIL_TOPIC="gemift_user"
+    KAFKA_FRIEND_EMAIL_TOPIC="gemift_friend"
+    KAFKA_SECRET_FRIEND_QUEUE="gemift_secret_friend"
     # File Logging Setup
     LOG_DIR = "/home/krissrinivasan/python/logs"
     LOG_TYPE="stream"
