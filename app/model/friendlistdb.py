@@ -122,11 +122,11 @@ class FriendListDB:
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
-            print("The error is ", e.message)
+            print("The error inside get_friend_by_id is ", e.message)
             return False
         except Exception as e:
             current_app.logger.error(e)
-            print("The error is ", e)
+            print("The error inside get_friend_by_id is ", e)
             return False
 
     def get_unique_friend_by_id(self, user_id, hshOutput):
@@ -136,8 +136,7 @@ class FriendListDB:
             hshOutput["referred_user_id"] = None
             query = "MATCH (a:friend_list)" \
                     " WHERE " \
-                    " a.user_id = $user_id_ and " \
-                    " a.first_name is not null " \
+                    " a.user_id = $user_id_ " \
                     " RETURN a.user_id as user_id, a.email_address as email_address, " \
                     "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location," \
                     "a.linked_status as linked_status, a.linked_user_id as linked_user_id, a.approval_status as approval_status," \
@@ -160,11 +159,11 @@ class FriendListDB:
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
-            print("The error is ", e.message)
+            print("The error inside get_unique_friend_by_id is ", e.message)
             return False
         except Exception as e:
             current_app.logger.error(e)
-            print("The error is ", e)
+            print("The error inside get_unique_friend_by_id is ", e)
             return False
 
     def get_friend_by_email(self, email_address, referrer_user_id, source_type, hshOutput):
@@ -236,7 +235,37 @@ class FriendListDB:
             print("The error is ", e)
             return False
 
+    def get_unique_friend_by_phone_number(self, phone_number, hshOutput):
+        try:
+            driver = NeoDB.get_session()
+            hshOutput["referred_user_id"] = None
+            query = "MATCH (a:friend_list)" \
+                    " WHERE " \
+                    " a.phone_number = $phone_number_ " \
+                    " RETURN a.user_id as user_id, a.friend_id as friend_id, a.email_address as email_address, " \
+                    "a.phone_number as phone_number, a.first_name as first_name, a.last_name as last_name, a.location as location, " \
+                    " a.linked_status as linked_status, a.linked_user_id as linked_user_id "
 
+            result = driver.run(query, phone_number_=phone_number)
+            for record in result:
+                hshOutput["referred_user_id"] = record["user_id"]
+                hshOutput["referrer_user_id"] = record["friend_id"]
+                hshOutput["email_address"] = record["email_address"]
+                hshOutput["phone_number"] = record["phone_number"]
+                hshOutput["location"] = record["location"]
+                hshOutput["first_name"] = record["first_name"]
+                hshOutput["last_name"] = record["last_name"]
+                hshOutput["linked_status"] = record["linked_status"]
+                hshOutput["linked_user_id"] = record["linked_user_id"]
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("The error is ", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
     def get_friend_su_by_id(self, user_id, list_output):
 
         try:
@@ -526,11 +555,11 @@ class FriendListDB:
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error(e.message)
-            print("The error is ", e.message)
+            print("The error inside the function insert by friend id is ", e.message)
             return False
         except Exception as e:
             current_app.logger.error(e)
-            print("The error is ", e)
+            print("The error inside the function insert by friend id is ", e)
             return False
 
     def add_friend_to_the_list_and_circle(self, hshuser, admin_flag, loutput):
@@ -580,8 +609,8 @@ class FriendListDB:
                 if not objGDBUser.get_friend_circle(hshuser["friend_circle_id"], list_output):
                     txn.rollback()
                     current_app.logger.error(
-                        "Unable to get the friend circle details ffor this contributor" + hshuser["friend_circle_id"])
-                    print("Unable to get the friend circle details ffor this contributor" + hshuser["friend_circle_id"])
+                        "Unable to get the friend circle details for this contributor" + hshuser["friend_circle_id"])
+                    print("Unable to get the friend circle details for this contributor" + hshuser["friend_circle_id"])
                     return False
                 loutput["data"] = list_output
             else:
@@ -600,12 +629,12 @@ class FriendListDB:
         except neo4j.exceptions.Neo4jError as e:
             txn.rollback()
             current_app.logger.error(e.message)
-            print("The error is ", e.message)
+            print("The error inside the function add_friend_to_the_list_and_circle is ", e.message)
             return False
         except Exception as e:
             txn.rollback()
             current_app.logger.error(e)
-            print("The error is ", e)
+            print("The error inside the function add_friend_to_the_list_and_circle is ", e)
             return False
 
     def create_secret_friend(self, hshuser, loutput):
@@ -638,17 +667,15 @@ class FriendListDB:
                     if user_output["user_id"] == hshuser["referrer_user_id"] :
                         current_app.logger.error("Creator of the friend circle cannot be the secret friend")
                         return False
+                    hshuser["referred_user_id"] = user_output["user_id"]
                     hshuser["linked_status"] = 1
                     hshuser["linked_user_id"] = user_output["user_id"]
                     user_exists = 1
-                else:
-                    hshuser["linked_status"] = 0
-                    hshuser["linked_user_id"] = None
             else:
                 current_app.logger.error("There is an issue getting information by email" + hshuser["phone_number"])
                 txn.rollback()
                 return False
-            # if not self.get_friend_by_email(hshuser["email_address"], "DIRECT", user_output): #phone primary key support
+
             if not self.get_friend_by_phone_number(hshuser["phone_number"], hshuser["referrer_user_id"], "DIRECT",
                                                    user_output):
                 current_app.logger.error("There is an issue getting information by email" + hshuser["phone_number"])
@@ -661,12 +688,26 @@ class FriendListDB:
                         return False
                     friend_exists = "Y"
                     if user_exists == 0:
+                        hshuser["referred_user_id"] = user_output["referred_user_id"]
                         hshuser["linked_status"] = user_output["linked_status"]
                         hshuser["linked_user_id"] = user_output["linked_user_id"]
+                        user_exists = 1
                 else:
-                    hshuser["linked_status"] = 0
-                    hshuser["linked_user_id"] = None
-                    friend_exists = "N"
+                    user_output.clear()
+                    if not self.get_unique_friend_by_phone_number(hshuser["phone_number"], user_output):
+                        current_app.logger.error("Unable to get the unique friend information by phone number")
+                        return False
+                    else:
+                        if "referred_user_id" in user_output and user_output["referred_user_id"] is not None:
+                            if user_exists == 0:
+                                hshuser["referred_user_id"] = user_output["referred_user_id"]
+                                hshuser["linked_status"] = user_output["linked_status"]
+                                hshuser["linked_user_id"] = user_output["linked_user_id"]
+                            friend_exists = "Y"
+                        else:
+                            hshuser["linked_status"] = 0
+                            hshuser["linked_user_id"] = None
+                            friend_exists = "N"
 
             hshuser["source_type"] = "DIRECT"
             hshuser["approval_status"] = 0
@@ -706,12 +747,12 @@ class FriendListDB:
         except neo4j.exceptions.Neo4jError as e:
             txn.rollback()
             current_app.logger.error(e.message)
-            print("The error is ", e.message)
+            print("The error inside create secret friend function is ", e.message)
             return False
         except Exception as e:
             txn.rollback()
             current_app.logger.error(e)
-            print("The error is ", e)
+            print("The error inside the create secret friend function is ", e)
             return False
 
     def create_secret_friend_by_id(self, hshuser, loutput):
@@ -872,12 +913,12 @@ class FriendListDB:
         except neo4j.exceptions.Neo4jError as e:
             txn.rollback()
             current_app.logger.error(e.message)
-            print("THere is a syntax error", e.message)
+            print("THere is a syntax error inside the insert_friend_wrapper function", e.message)
             return False
         except Exception as e:
             txn.rollback()
             current_app.logger.error(e)
-            print("The error is ", e)
+            print("The error inside the insert_friend_wrapper function is ", e)
             return False
 
     def insert_friend_circle(self, user_id, friend_id, friend_circle_name,  output_hash, txn, hshuser=None):
@@ -1187,12 +1228,12 @@ class FriendListDB:
             print("Error in adding contributors", e)
             return False
 
-    def contributor_approval(self, friend_circle_id, phone_number, approval_status):
+    def contributor_approval(self, friend_circle_id, user_id, friend_id, phone_number, approval_status):
         try:
             # Here the assumption is the user cannot set relationship unless registered w
             driver = NeoDB.get_session()
 
-            query = "MATCH (fl:friend_list{phone_number:$phone_number_})-[:CONTRIBUTOR]->(fc:friend_circle{friend_circle_id:$friend_circle_id_}) " \
+            query = "MATCH (fl:friend_list{friend_id:$friend_id_,user_id:$user_id_,phone_number:$phone_number_})-[:CONTRIBUTOR]->(fc:friend_circle{friend_circle_id:$friend_circle_id_}) " \
                     " SET fl.approval_status = $approval_status_, " \
                     " fl.updated_dt = $updated_dt_" \
                     " RETURN fc.friend_circle_id as friend_circle_id, " \
@@ -1200,7 +1241,9 @@ class FriendListDB:
 
             result = driver.run(query, friend_circle_id_ = friend_circle_id,
                                 phone_number_ = phone_number,
-                                approval_status_ = approval_status,
+                                user_id_ = user_id,
+                                friend_id_ = friend_id,
+                                approval_status_ = int(approval_status),
                                 updated_dt_ = self.get_datetime())
 
             for record in result:
@@ -1216,7 +1259,7 @@ class FriendListDB:
             print("Error in adding contributors", e)
             return False
 
-    def get_open_invites(self,  phone_number,list_output):
+    def get_open_invites(self, user_id, phone_number,list_output):
             try:
                 # Here the assumption is the user cannot set relationship unless registered w
                 driver = NeoDB.get_session()
@@ -1224,7 +1267,10 @@ class FriendListDB:
                         " WHERE fl.phone_number = $phone_number_ and " \
                         " fl.approval_status = 0 " \
                         " RETURN fc.friend_circle_id as friend_circle_id, " \
-                        " fl.linked_user_id as linked_user_id, " \
+                        " fl.user_id as referred_user_id, " \
+                        " fl.friend_id as referrer_user_id," \
+                        " fl.phone_number as phone_number," \
+                        " fl.linked_user_id as linked_user_id," \
                         " fc.friend_circle_name as friend_circle_name, " \
                         " fc.secret_friend_name as secret_first_name ," \
                         " fc.secret_last_name as secret_last_name, " \

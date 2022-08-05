@@ -38,8 +38,9 @@ def create_app(config_name: str):
         'username': app.config['FTEYES_USERNAME'],
         'password': app.config['FTEYES_PASSWORD']
     }
-    app.config['MONGO_URI'] = "mongodb+srv://krisraman:1RyrVRJQCBMIdG77@gemiftcluster.qwn4p.mongodb.net/sample_airbnb"
-    app.config['SECURITY_PASSWORD_SALT'] = 'Dx^&32hjeh'
+    print ("The mongo db URI is", os.environ.get("MONGO_URI"))
+    app.config['MONGO_URI'] = os.environ.get("MONGO_URI")
+    app.config['SECURITY_PASSWORD_SALT'] = os.environ.get("SECURITY_PASSWORD_SALT")
     jwt.init_app(app)
     flask_bcrypt.init_app(app)
     dbx.init_app(app)
@@ -56,10 +57,8 @@ def create_app(config_name: str):
         register_extensions(app)
         cloud_mongodb.init_app(app)
 
-    print ("After initializing the context")
     @app.before_request
     def before_request():
-        print ("Before request I see this")
         g.db = cloud_mongodb.db
 
 
@@ -87,8 +86,8 @@ def create_app(config_name: str):
 
 def register_extensions(app):
     logs.init_app(app)
-    NeoDB.init_app(app, app.config['FTEYES_GDB_URI'], app.config['FTEYES_GDB_DB'], app.config['FTEYES_GDB_USER'],
-                   app.config['FTEYES_GDB_PWD'])
+    NeoDB.init_app(app, os.environ.get("GRAPH_DB_URI"), os.environ.get("GRAPH_DB_STR"), os.environ.get("GRAPH_DB_USER"),
+                   os.environ.get("GRAPH_DB_PWD"))
     #RedisCache.init_app(app, app.config['REDIS_HOST'], app.config['REDIS_PORT'], app.config['REDIS_PASSWORD'], app.config['REDIS_DBNAME'])
     #from service.cachebuilder import load_category_cache, load_subcat_brand_cache
     #load_category_cache()

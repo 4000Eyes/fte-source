@@ -152,15 +152,17 @@ class SearchDB:
                 #range_string =  {"range": {"gte": inputs["age_floor"],"path": "age_lo"}}
                 age_floor_hash = {}
                 age_floor_hash["range"] = {}
-                age_floor_hash["range"]["lte"] = int(inputs["age"])
                 age_floor_hash["range"]["path"] = "age_lo"
+                age_floor_hash["range"]["lte"] = int(inputs["age"])
+
 
             if "age" in inputs:
                 #celing = {"range": {"gte": inputs["age_ceiling"],"path": "age_hi"}}
                 age_ceiling_hash = {}
                 age_ceiling_hash["range"] = {}
-                age_ceiling_hash["range"]["gte"] = int(inputs["age"])
                 age_ceiling_hash["range"]["path"] = "age_hi"
+                age_ceiling_hash["range"]["gte"] = int(inputs["age"])
+
 
             #{'range': {'path': 'created_dt','gt': myDatetime}}
 
@@ -221,7 +223,7 @@ class SearchDB:
                     must_class_hash = subcategory_hash
             if len(must_class_hash) <= 0:
                 current_app.logger.error("The must class cannot be empty")
-                return False
+                return 2
 
             search_string = {"$search": {"index": self.get_index(),
                                                              "compound": {"must": [
@@ -230,11 +232,17 @@ class SearchDB:
                                                                  }}
                                                                  ]}}
                              }
+
+
             sort_string = {"$sort": { "price": sort_order }}
-            skip_string = {"$skip": inputs["page_size"]}
+
+            skip_size = inputs["page_size"] * (inputs["page_size"] -1 )
+            skip_string = {"$skip": skip_size}
             limit_string = {"$limit": inputs["page_number"]}
+
             pipeline = [search_string, sort_string, skip_string, limit_string]
             print ("The pipeline query is", pipeline)
+
             user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
             result = user_collection.aggregate(pipeline)
 
@@ -255,23 +263,22 @@ class SearchDB:
             """
             if result is not None:
                 for doc in result:
-                    print("The doc is ", doc)
+                    print("The doc is ", doc["interest"], doc["age_lo"], doc["age_hi"])
                     output_list.append(doc)
-                print("The result is ", len(output_list), output_list)
-                return True
+                return 1
             else:
                 print("No output")
-            return True
+            return 1
 
         except errors.PyMongoError as e:
             current_app.logger.error(e)
             print("The error is ", e)
-            return False
+            return -1
 
         except Exception as e:
             current_app.logger.error(e)
             print("The generic exception is ", e)
-            return False
+            return -1
 
 
 

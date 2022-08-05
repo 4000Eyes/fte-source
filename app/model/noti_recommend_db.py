@@ -1,3 +1,4 @@
+import json
 import os
 import neo4j.exceptions
 import logging
@@ -13,10 +14,11 @@ from app.model.gdbmethods import GDBUser
 
 class NotificationAndRecommendationDB(Resource):
 
-    def friend_circle_with_no_occasion(self, l_friend_circle, list_output):
+    def friend_circle_with_no_occasion(self, user_id, l_friend_circle, list_output):
         try:
             obj_gdb = GDBUser()
             driver = NeoDB.get_session()
+            type_id = "FRIEND_CIRCLE_NO_OCCASION"
 
             no_occasion_query = "match (u:User)-[:CIRCLE_CREATOR]->(fc:friend_circle) " \
                                 "where not exists {(u:User)-[x:OCCASION]->(friend_occasion)}  and " \
@@ -30,8 +32,14 @@ class NotificationAndRecommendationDB(Resource):
 
             result = driver.run(no_occasion_query, l_friend_circle_=l_friend_circle)
             for record in result:
-                list_output.append(record.data())
-
+                rec = json.loads(json.dumps(record.data()))
+                if not self.decorate_message(user_id,type_id, rec):
+                    current_app.logger.error("Unable to add user id and message_id to the row")
+                    return False
+                list_output.append(rec)
+                if not self.insert_message(user_id,rec["message_id"], type_id, rec):
+                    current_app.logger.error("Unable to insert message")
+                    return False
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("The error is " + str(e))
@@ -40,14 +48,15 @@ class NotificationAndRecommendationDB(Resource):
             current_app.logger.error("The error is " + str(e))
             return False
 
-    def days_since_last_occasion(self, l_friend_circle, list_output):
+    def days_since_last_occasion(self, user_id, l_friend_circle, list_output):
         try:
             obj_gdb = GDBUser()
             driver = NeoDB.get_session()
+            type_id = "DAYS_SINCE_LAST_OCCASION"
             days_since_occasion_query = " match (fc:friend_occasion) , (f:friend_circle) " \
                                         "where f.friend_circle_id = fc.friend_circle_id and " \
                                         " fc.friend_circle_id in $l_friend_circle_ and " \
-                                        "duration.inDays(date(datetime({epochmillis: apoc.date.parse(fc.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')})), date()).days >= 30 " \
+                                        "duration.inDays(date(datetime({epochmillis: apoc.date.parse(fc.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')})), date()).days >= 1 " \
                                         "return " \
                                         "max(fc.created_dt) as last_created_date, " \
                                         "fc.friend_circle_id as friend_circle_id, " \
@@ -59,8 +68,18 @@ class NotificationAndRecommendationDB(Resource):
             result = driver.run(days_since_occasion_query,  l_friend_circle_=l_friend_circle)
 
             for record in result:
-                list_output.append(record.data())
+                rec = json.loads(json.dumps(record.data()))
+                if not self.decorate_message(user_id,type_id, rec):
+                    current_app.logger.error("Unable to add user id and message_id to the row")
+                    return False
 
+                list_output.append(rec)
+
+                if not self.insert_message(user_id,rec["message_id"], type_id, rec):
+                    current_app.logger.error("Unable to insert message")
+                    return False
+
+                #list_output.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("The error is " + str(e))
@@ -73,7 +92,7 @@ class NotificationAndRecommendationDB(Resource):
         try:
             obj_gdb = GDBUser()
             driver = NeoDB.get_session()
-
+            type_id = "FRIEND_CIRCLE_WITH_NO_INTERESTS"
 
             # query = " match(fc: friend_circle ) " \
             #         " WHERE fc.friend_circle_id in $l_friend_circle_id_ " \
@@ -99,9 +118,19 @@ class NotificationAndRecommendationDB(Resource):
                     " fc.secret_last_name as secret_last_name "
 
             result = driver.run(query, user_id_=user_id, l_friend_circle_id_=l_friend_circle)
-
             for record in result:
-                list_output.append(record.data())
+                rec = json.loads(json.dumps(record.data()))
+                if not self.decorate_message(user_id,type_id, rec):
+                    current_app.logger.error("Unable to add user id and message_id to the row")
+                    return False
+
+                list_output.append(rec)
+
+                if not self.insert_message(user_id,rec["message_id"], type_id, rec):
+                    current_app.logger.error("Unable to insert message")
+                    return False
+
+                #list_output.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("The error is " + str(e))
@@ -114,7 +143,7 @@ class NotificationAndRecommendationDB(Resource):
         try:
             obj_gdb = GDBUser()
             driver = NeoDB.get_session()
-
+            type_id = "RELATIONSHIP_STATUS"
             query = "match (x:User{user_id:$user_id_}),(n:friend_circle) " \
                     "where not exists ((x)-[:RELATION]->(n)) " \
                     "and n.friend_circle_id in $l_friend_circle_ " \
@@ -128,8 +157,17 @@ class NotificationAndRecommendationDB(Resource):
             result = driver.run(query, user_id_=user_id, l_friend_circle_=l_friend_circle)
 
             for record in result:
-                list_output.append(record.data())
 
+                rec = json.loads(json.dumps(record.data()))
+                if not self.decorate_message(user_id,type_id, rec):
+                    current_app.logger.error("Unable to add user id and message_id to the row")
+                    return False
+
+                list_output.append(rec)
+                if not self.insert_message(user_id,rec["message_id"], type_id, rec):
+                    current_app.logger.error("Unable to insert message")
+                    return False
+                #list_output.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("The error is " + e)
@@ -141,8 +179,9 @@ class NotificationAndRecommendationDB(Resource):
     def get_interest_reminders(self, user_id, l_friend_circle, list_output):
         try:
             driver = NeoDB.get_session()
-            interest_reminder_days = 2
+            interest_reminder_days = 1
             interest_reminder_days = os.environ.get("INTEREST_REMINDER_DAYS")
+            type_id = "INTEREST_REMINDERS"
             query = "MATCH (u:User)-[r:INTEREST]->(w:WebCat), (fc:friend_circle)" \
                     " WHERE duration.inDays(date(datetime({epochmillis: apoc.date.parse(r.created_dt, 'ms', 'dd/MM/yyyy HH:mm:ss')})), date()).days >= $interest_reminder_days_ " \
                     " AND r.friend_circle_id = fc.friend_circle_id " \
@@ -164,19 +203,23 @@ class NotificationAndRecommendationDB(Resource):
             result = driver.run(query, interest_reminder_days_=int(interest_reminder_days), user_id_=user_id,
                                 l_friend_circle_=l_friend_circle)
             for record in result:
-                list_output.append(record.data())
+                rec = json.loads(json.dumps(record.data()))
+                if not self.decorate_message(user_id, type_id, rec):
+                    current_app.logger.error("Unable to add user id and message_id to the row")
+                    return False
+
+                list_output.append(rec)
+                if not self.insert_message(user_id, rec["message_id"], type_id, rec):
+                    current_app.logger.error("Unable to insert message")
+                    return False
+
+                #list_output.append(record.data())
             return True
         except neo4j.exceptions.Neo4jError as e:
             current_app.logger.error("The error is " + str(e))
             return False
         except Exception as e:
             current_app.logger.error("The error is " + str(e))
-            return False
-
-    def new_user_recommendation(self):
-        try:
-            return True
-        except pymongo.errors.PyMongoError as e:
             return False
 
     def get_home_page_metrics(self, hshoutput):
@@ -240,4 +283,61 @@ class NotificationAndRecommendationDB(Resource):
                 loutput.append(row)
             return True
         except Exception as e:
+            return False
+
+    def get_messages(self, user_id, list_data):
+        try:
+            message_collection = pymongo.collection.Collection(g.db, "gemift_messages")
+            result = message_collection.find({"$and":[{"user_id":user_id},{ "is_seen":"N"}]})
+            for record in result:
+                pay_load = record["pay_load"]
+                pay_load.update({"type_id": record["type_id"]})
+                list_data.append(pay_load)
+            return True
+        except Exception as e:
+            current_app.logger.error("The error in function get message count is " + e)
+            return False
+    def get_message_count(self, user_id, list_output):
+        try:
+            message_collection = pymongo.collection.Collection(g.db, "gemift_messages")
+            result = message_collection.find({"$and":[{"user_id":user_id},{"is_seen":"N"}]}).count()
+            list_output.append({"message_count":result})
+            return True
+        except Exception as e:
+            current_app.logger.error("The error in function get message count is " + e)
+            return False
+    def update_message(self, user_id, message_id):
+        try:
+            message_collection = pymongo.collection.Collection(g.db, "gemift_messages")
+            message_collection.update_one({"$and":[{"user_id":user_id}, {"message_id":message_id}]}, {"$set":{"is_seen": "Y"}})
+            return True
+        except Exception as e:
+            current_app.logger.error("The error in function decorate message is " + e)
+            return False
+
+    def insert_message(self, user_id, message_id, type_id, hshdata):
+        try:
+            if "message_id" not in hshdata:
+                current_app.logger.error("Message ID missing in dict")
+                return False
+            json_content = json.loads(json.dumps(hshdata))
+            message_collection = pymongo.collection.Collection(g.db, "gemift_messages")
+            message_collection.insert_one({"user_id": user_id,
+                                           "message_id": message_id,
+                                           "is_seen": "N",
+                                           "type_id": type_id,
+                                           "pay_load": json_content})
+
+            return True
+        except Exception as e:
+            current_app.logger.error("The error in function decorate message is " + e)
+            return False
+    def decorate_message(self, user_id, type_id, hshdata):
+        try:
+            hshdata.update({"user_id": user_id})
+            message_id = str(uuid.uuid4())
+            hshdata.update({"message_id": str(message_id)})
+            return True
+        except Exception as e:
+            current_app.logger.error("The error in function decorate message is " + e)
             return False

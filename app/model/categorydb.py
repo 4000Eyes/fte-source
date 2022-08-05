@@ -121,6 +121,7 @@ class CategoryManagementDB(Resource):
             driver = NeoDB.get_session()
             query = "MERGE (a:WebSubCat{web_subcategory_name:$web_subcategory_name_}) " \
                     " ON MATCH set  " \
+                    " a.web_subcategory_id = $web_id_, " \
                     " a.updated_dt = $updated_dt_ ," \
                     " a.parent_id = $parent_id_, " \
                     "a.description=$description_ ," \

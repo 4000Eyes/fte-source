@@ -85,6 +85,13 @@ class UserHelperFunctions():
                 return False
             ack_hash["user_id"] = loutput["user_id"]
             ack_hash["authorized"] = self.check_password(loutput["password"], pwd)
+            ack_hash["email_address"] = loutput["email_address"]
+            ack_hash["phone_number"] = loutput["phone_number"]
+            ack_hash["first_name"] = loutput["first_name"]
+            ack_hash["last_name"] = loutput["last_name"]
+            ack_hash["gender"] = loutput["gender"]
+            ack_hash["location"] = loutput["location"]
+            ack_hash["image_url"] = loutput["image_url"] if "image_url" in loutput else None
             return True
         except Exception as e:
             current_app.logger.error(e)

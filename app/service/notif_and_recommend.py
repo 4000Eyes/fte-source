@@ -14,6 +14,7 @@ class NotificationAndRecommendation(Resource):
             request_id = request.args.get("request_id", type=int)
             user_id = request.args.get("user_id", type=str)
             phone_number = request.args.get("phone_number", type=str)
+            message_id = request.args.get("message_id", type=str)
             obj_notification = NotificationAndRecommendationDB()
             list_output = []
             list_data = []
@@ -33,7 +34,7 @@ class NotificationAndRecommendation(Resource):
                             hsh[row["friend_circle_id"]] = 1
                             l_friend_circle.append(row["friend_circle_id"])
 
-                if not obj_notification.friend_circle_with_no_occasion(l_friend_circle, list_output):
+                if not obj_notification.friend_circle_with_no_occasion(user_id,l_friend_circle, list_output):
                     return {"status": "Failure: Unable to get occasion reminders data"}, 400
 
                 # for item in user_output:
@@ -46,7 +47,7 @@ class NotificationAndRecommendation(Resource):
                 list_data.append({"no_occasions": list_output})
 
                 days_since_output = []
-                if not obj_notification.days_since_last_occasion(l_friend_circle, days_since_output):
+                if not obj_notification.days_since_last_occasion(user_id, l_friend_circle, days_since_output):
                     return {"status": "Failure. Unable to get the occasions created N days ago"}, 400
 
                 list_data.append({"days_since_occasion": days_since_output})
@@ -89,7 +90,7 @@ class NotificationAndRecommendation(Resource):
 
                 contributor_approval_output = []
 
-                if not objFriend.get_open_invites(phone_number, contributor_approval_output):
+                if not objFriend.get_open_invites(user_id,phone_number, contributor_approval_output):
                     return {"status" : "Failure: Unable to get the list of open contributor approvals"}, 400
                 list_data.append({"contributor_invites" : contributor_approval_output})
 
@@ -100,6 +101,13 @@ class NotificationAndRecommendation(Resource):
 
                 list_data.append({"unapproved_occasions": list_unapproved_occasions})
 
+
+                list_output = []
+                if not obj_notification.get_message_count(user_id,list_output):
+                    current_app.logger.error("Unable to get message count for notification")
+                    return {"status": "Unablet to get message count"}, 400
+
+                list_data.append({"message_count":list_output})
                 return json.loads(json.dumps(list_data)), 200
 
             if request_id == 2: # for the app notification page
@@ -111,7 +119,7 @@ class NotificationAndRecommendation(Resource):
 
                 contributor_approval_output = []
                 objFriend = FriendListDB()
-                if not objFriend.get_open_invites(phone_number, contributor_approval_output):
+                if not objFriend.get_open_invites(user_id, phone_number, contributor_approval_output):
                     return {"status" : "Failure: Unable to get the list of open contributor approvals"}, 400
                 final_output.append({"contributor_invites" : contributor_approval_output})
 
@@ -158,6 +166,18 @@ class NotificationAndRecommendation(Resource):
                     current_app.logger.error("Unable to get the interest stats")
                     return {"status" : "Error in getting stats"}
 
+            if request_id == 9: # update notification messages
+                if obj_notification.update_message(user_id, message_id):
+                    current_app.logger.error("Unable to update the message")
+                    return {"status": "message failure"}, 400
+                return {"status": "success"}, 200
+
+            if request_id == 10: # get all messages
+                list_data = []
+                if obj_notification.get_messages(user_id, list_data):
+                    current_app.logger.error("Unable to update the message")
+                    return {"status": "message failure"}, 400
+                return {"status": json.loads(json.dumps(list_data))}, 200
             """
             check if the user is admin for any friend circles
             """
@@ -188,6 +208,8 @@ class NotificationAndRecommendation(Resource):
         except Exception as e:
             current_app.logger.error("Unable to loop through")
             return -1
+
+
 
 
 """

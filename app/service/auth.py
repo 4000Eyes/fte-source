@@ -127,10 +127,10 @@ class PhoneSignUpAPI(Resource):
                 if len(data) > 0:
                     current_app.logger.info(
                         "User id exists for " + user_hash.get("phone_number") + "user id is" + data.get("user_id"))
-                    return {'status': ' User already exists'}, 400
+                    return {'Error': ' User already exists'}, 400
             else:
                 current_app.logger.error("User with this phone number already exists" + user_hash.get("phone_number"))
-                return {'status': ' User already exists for ' + user_hash.get("phone_number")}, 400
+                return {'Error': ' User already exists for ' + user_hash.get("phone_number")}, 400
 
             data = {}
 
@@ -198,10 +198,12 @@ class LoginApi(Resource):
             expires = datetime.timedelta(days=7)
             access_token = create_access_token(identity=str(ack_hash["user_id"]), expires_delta=expires)
             hshoutput = {}
+            """
             list_output = []
             if not objGDBUser.get_user_summary(ack_hash["user_id"], hshoutput, txn=None, list_output=list_output):
                 current_app.logger.error("Unable to get friend circles for user" + ack_hash["user_id"])
                 return {"status": "failure"}, 401
+            """
             hshoutput.clear()
             hshoutput["logged_user_id"] =  ack_hash["user_id"]
             hshoutput["email_address"] = ack_hash["email_address"]
@@ -212,7 +214,7 @@ class LoginApi(Resource):
             hshoutput["gender"] = ack_hash["gender"]
             return {'token': access_token, 'data' : json.loads(json.dumps(hshoutput))}, 200
         except Exception as e:
-            print ("The error is ", e)
+            print ("The error in Login API is ", e)
             return {'token': 'n/a'}, 400
 
 class LoginPhoneAPI(Resource):

@@ -192,14 +192,14 @@ class GDBUser(Resource):
                 output_data["gender"] = record["gender"]
             return True
         except neo4j.exceptions.Neo4jError as e:
-            print("THere is a syntax error", e.message, e.metadata)
+            print("THere is a syntax error in get_user_by_phone", e.message, e.metadata)
             output_data["user_id"] = None
             output_data["email_address"] = None
             output_data["user_type"] = None
             output_data["password"] = None
             return False
         except Exception as e:
-            print("THere is a syntax error", e)
+            print("THere is a syntax error in get_user_by_phone", e)
             output_data["user_id"] = None
             output_data["email_address"] = None
             output_data["user_type"] = None
@@ -226,6 +226,8 @@ class GDBUser(Resource):
             for record in loutput:
                 if "user_id" not in record:
                     break;
+                user_id = record["user_id"]
+                """
                 if record["linked_user_id"] is not None:
                     output_hash[
                         "outcome"] = "User already exists for this email and phone combination. Route it to support"
@@ -234,7 +236,7 @@ class GDBUser(Resource):
                         "User already exists for this email and phone combination. Route it to support" + user_hash.get(
                             "email_address"))
                     return False
-
+                """
             if user_id is None:
                 user_id = self.get_id()
 
@@ -329,6 +331,8 @@ class GDBUser(Resource):
             for record in loutput:
                 if "user_id" not in record:
                     break;
+                user_id = record["user_id"]
+                """
                 if record["linked_user_id"] is not None:
                     output_hash[
                         "outcome"] = "User already exists for this email and phone combination. Route it to support"
@@ -337,6 +341,7 @@ class GDBUser(Resource):
                         "User already exists for this email and phone combination. Route it to support" + user_hash.get(
                             "phone_number"))
                     return False
+                """
 
             if user_id is None:
                 user_id = self.get_id()
@@ -861,7 +866,8 @@ class GDBUser(Resource):
                      " ff.gender as gender," \
                      " ff.age as age," \
                     " ff.phone_number as phone_number, " \
-                    " ff.email_address as email_address, " \
+                    " ff.email_address as email_address," \
+                    " ff.approval_status as approval_status, " \
                      " type(rr) as relationship, " \
                      " fc.friend_circle_id as friend_circle_id," \
                      " fc.friend_circle_name as friend_circle_name," \
@@ -913,6 +919,7 @@ class GDBUser(Resource):
                      " ff.last_name as last_name," \
                      " ff.gender as gender," \
                      " ff.age as age," \
+                     " ff.approval_status as approval_status," \
                      " type(rr) as relationship, " \
                      " fc.friend_circle_id as friend_circle_id," \
                      " fc.friend_circle_name as friend_circle_name," \
@@ -927,10 +934,12 @@ class GDBUser(Resource):
                     " xf.secret_friend_id <> $user_id_" \
                     " return " \
                     " pp.user_id as user_id," \
+                    " pp.friend_id as friend_id," \
                     " pp.first_name as first_name," \
                     " pp.last_name as last_name," \
                     " pp.gender as gender," \
                     " pp.age as age," \
+                    " pp.approval_status as approval_status," \
                     " type(rr) as relationship, " \
                     " xf.friend_circle_id as friend_circle_id," \
                     " xf.friend_circle_name as friend_circle_name," \
@@ -1492,7 +1501,8 @@ class GDBUser(Resource):
                     "RETURN count(a.user_id) as users, " \
                     "sum(r.vote) as votes, " \
                     "b.web_subcategory_id as subcategory_id," \
-                    " b.web_subcategory_name as subcategory_name "
+                    " b.web_subcategory_name as subcategory_name," \
+                    " b.image_url as image_url "
             result = driver.run(query, friend_circle_id_=friend_circle_id)
             for record in result:
                 loutput.append(record.data())
@@ -1871,10 +1881,10 @@ class GDBUser(Resource):
                      " return xf.friend_circle_id " \
                      " union "\
                      " with fc "\
-                     " match (pp:friend_list)<-[]->(xf:friend_circle) "\
-                     " where ( pp.user_id = $user_id_ or pp.linked_user_id = $user_id_ ) and " \
-                     " fc.secret_friend_id <> $user_id_ "\
-                     " and (pp.approval_status in [0,1] or pp.approval_status is null) "\
+                     " match (pp:friend_list)<-[rr]->(xf:friend_circle) "\
+                     " where ( pp.user_id = $user_id_ or pp.linked_user_id = $user_id_ )  " \
+                     " and type(rr) = 'CONTRIBUTOR' " \
+                     " and (pp.approval_status in [1] or pp.approval_status is null) "\
                      " and xf.friend_circle_id = fc.friend_circle_id "\
                      " return xf.friend_circle_id "\
                      " } "\
@@ -2285,10 +2295,14 @@ class GDBUser(Resource):
                 return False
             hsh = {}
             for row in user_output:
-                if row["relationship"] != "SECRET_FRIEND":
-                    if row["friend_circle_id"] not in hsh:
-                        hsh[row["friend_circle_id"]] = 1
-                        l_friend_circle.append(row["friend_circle_id"])
+                if row["relationship"] == "SECRET_FRIEND" and row["user_id"] != user_id:
+                    if row["approval_status"] is None:
+                        row["approval_status"] = 0
+                    if (row["user_id"] == user_id and int(row["approval_status"]) == 1) or row["friend_id"] == user_id:
+
+                        if row["friend_circle_id"] not in hsh:
+                            hsh[row["friend_circle_id"]] = 1
+                            l_friend_circle.append(row["friend_circle_id"])
 
             if len(l_friend_circle) <= 0:
                 current_app.logger.info("This user is not part of any friend circle" + str(user_id))
@@ -2699,11 +2713,56 @@ class GDBUser(Resource):
             print(e)
             return False
 
-    def delete_friend_circle(self, user_id, friend_circle_id):
-        pass
+    def delete_friend_circle(self, admin_id, friend_circle_id,loutput):
+        try:
+            driver = NeoDB.get_session()
+            sql = "match (u:User{user_id:$admin_id_})-[:CIRCLE_CREATOR]->" \
+                  "(fc:friend_circle{fc.friend_circle_id:$friend_circle_id_})" \
+                  " SET is_active = -2 " \
+                  " return " \
+                  "fc.friend_circle_id"
+            result = driver.run(sql,
+                                friend_circle_id_=friend_circle_id,
+                                admin_id_= admin_id)
+            for row in result:
+                loutput.append(row.data())
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("The error is ", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print(e)
+            return False
 
-    def delete_member_from_friend_circle(self, user_id, friend_circle_id):
-        pass
+    def delete_member_from_friend_circle(self,  friend_circle_id, referrer_user_id, referred_user_id, loutput):
+        try:
+            driver = NeoDB.get_session()
+            sql = "match (u:User{user_id:$referrer_user_id})-[:CIRCLE_CREATOR]->" \
+              "(fc:friend_circle{fc.friend_circle_id:$friend_circle_id_})" \
+              "<-[:CONTRIBUTOR]-(fl:friend_list{$friend_id:$referrer_user_id_, $user_id:$referred_user_id_})" \
+              " SET fl.approval_status = -2 " \
+              " return " \
+              "fl.friend_id as referrer_user_id," \
+              "fl.user_id as referred_user_id," \
+              "fl.approval_status," \
+              "fc.friend_circle_id"
+            result = driver.run(sql,
+                             friend_circle_id_ = friend_circle_id,
+                             referrer_user_id_ = referrer_user_id,
+                             referred_user_id_ = referred_user_id)
+            for row in result:
+                loutput.append(row.data())
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("The error is ", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print(e)
+            return False
 
     def get_total_friend_circle_stats(self, list_output):
         try:

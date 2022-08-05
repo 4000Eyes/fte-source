@@ -52,7 +52,7 @@ class ManageFriendCircle(Resource):
             user_info["friend_circle_name"] = content["friend_circle_name"] if "friend_circle_name" in content else None
             user_info["list_friend_circle_id"] = content["list_friend_circle_id"] if "list_friend_circle_id" in content else None
             user_info["group_name"] = content["group_name"] if "group_name" in content else None
-            user_info["approval_status"] = content["approval_status"] if "approval_status" in content else None
+            user_info["approval_status"] = content["signal"] if "signal" in content else None
             user_info["image_url"] = content["image_url"] if "image_url" in content else None
             user_info["age"] = content["age"] if "age" in content else None
 
@@ -102,9 +102,11 @@ class ManageFriendCircle(Resource):
                         user_info["approval_status"] = 0
                         user_info["friend_list_flag"] = "Y"
                     else:
+                        output.clear()
                         if not objFriend.get_unique_friend_by_id(user_info["referred_user_id"], output):
-                            return {"status" : "System issue: Unable to find the contributor in the system."}, 400
-
+                            return {"Error" : "System issue: Unable to find the contributor in the system."}, 400
+                        if output["referred_user_id"] is None:
+                            return {"Error": "The referred user is not in the system. "}, 400
                         user_info["first_name"] = output["first_name"]
                         user_info["last_name"] = output["last_name"]
                         user_info["email_address"] = output["email_address"]
@@ -176,20 +178,15 @@ class ManageFriendCircle(Resource):
                 referred_user_id = None
 
                 if not objGDBUser.get_user_role_as_contrib_secret_friend(user_info["phone_number"], user_info["referrer_user_id"], user_info["friend_circle_id"], hshOutput):
-                    current_app.logger.error("Unablet to get the roles for " + user_info["email_address"])
+                    current_app.logger.error("Unable to get the roles for " + user_info["email_address"])
                     return {"status" : "Unable to check the roles of the user"}, 400
-
                 if user_info["phone_number"] in hshOutput:
-
                     if hshOutput[user_info["phone_number"]]["contrib_flag"] == "Y":
                         return {"status": "User is already a contributor to the friend circle "}, 400
-
                     if hshOutput[user_info["phone_number"]]["secret_friend_flag"] == "Y":
                         return {"status": " recommended user is the secret friend "}, 400
-
                     if hshOutput[user_info["phone_number"]]["circle_creator_flag"] == "Y":
                         return {"status": " creator cannot be the contributor "}, 400
-
                     if hshOutput[user_info["phone_number"]]["user_id"] is not None and hshOutput[user_info["phone_number"]]["friend_id"] is not None:
                         friend_record_exists = 1
                         referred_user_id = hshOutput[user_info["phone_number"]]["user_id"]
@@ -198,15 +195,15 @@ class ManageFriendCircle(Resource):
                     current_app.logger.error("Unablet to get the roles for " + user_info["referrer_user_id"])
                     return {"status" : "Unable to check the roles of the user"}, 400
 
+                if user_info["referrer_user_id"] not in hshOutput:
+                    current_app.logger.error("The referrer is not in the friend circle. Something wrong")
+                    return {"status" : "The referrer is not part of the friend circle. Something is wrong"}, 400
+
                 if len(hshOutput) <= 0:
                     current_app.logger.error("The referrer is not in the system. Bailing out" + user_info["referrer_user_id"])
                     return False
 
                 is_admin = 0
-
-                if user_info["referrer_user_id"] not in hshOutput:
-                    current_app.logger.error("The referrer is not in the friend circle. Something wrong")
-                    return {"status" : "The referrer is not part of the friend circle. Something is wrong"}, 400
 
                 if hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "N" and hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "N":
                         return {"status": "The referrer is neither a circle creator nor a contributore"}, 400
@@ -223,26 +220,33 @@ class ManageFriendCircle(Resource):
                 user_info["friend_list_flag"] = "N"
 
                 if output.get("user_id") is not None:
+                    if ( is_admin == 1 or hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "Y") and output.get("user_id") == user_info["referrer_user_id"]:
+                        return {"Error": "creator or contributor cannot be the contributor"}, 400
+                    user_info["referred_user_id"] = output.get("user_id")
                     user_info["linked_status"] = 1
                     user_info["linked_user_id"] = output.get("user_id")
+                    user_info["referred_user_id"] = output.get("user_id")
                     user_info["approval_status"] = 0
                 else:
                     user_info["linked_status"] = 0
                     user_info["linked_user_id"] = None
                     user_info["approval_status"] = 0
                     #if not objFriend.get_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], "DIRECT", output): # phone primary key support
-                if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
-                    current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
-                    return {"status": "Unable to check the presence of user record in the db"}, 400
-                if "referred_user_id" in output and output["referred_user_id"] is not None:
-                    user_info["linked_status"] = output["linked_status"]
-                    user_info["linked_user_id"] = output["linked_user_id"]
-                    user_info["friend_list_flag"] = "Y"
-                    user_info["approval_status"] = 0
-                else:
-                    user_info["linked_status"] = 0
-                    user_info["linked_user_id"] = None
-                    user_info["approval_status"] = 0
+
+                    if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
+                        current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
+                        return {"status": "Unable to check the presence of user record in the db"}, 400
+                    if "referred_user_id" in output and output["referred_user_id"] is not None:
+                        user_info["referred_user_id"] = output["user_id"]
+                        user_info["linked_status"] = output["linked_status"]
+                        user_info["linked_user_id"] = output["linked_user_id"]
+                        user_info["friend_list_flag"] = "Y"
+                        user_info["approval_status"] = 0
+                        user_info["referrer_user_id"] = output["user_id"]
+                    else:
+                        user_info["linked_status"] = 0
+                        user_info["linked_user_id"] = None
+                        user_info["approval_status"] = 0
                 if not objFriend.insert_friend_wrapper(user_info, is_admin, output):
                     current_app.logger.error("Unable to insert friend into the friend list " + user_info["email_address"])
                     print("Unable to insert friend into the friend list " + user_info["email_address"])
@@ -321,16 +325,31 @@ class ManageFriendCircle(Resource):
                 if user_info["friend_circle_id"] is None or user_info["phone_number"] is None:
                     current_app.logger.error("The required parameters for this requests are missing")
                     return {"status" : "Failure: Unable to complete the operation"},400
-                if not objFriend.contributor_approval(user_info["friend_circle_id"], user_info["phone_number"], user_info["approval_status"]):
+                if not objFriend.contributor_approval(user_info["friend_circle_id"],
+                                                      user_info["referred_user_id"],
+                                                      user_info["referrer_user_id"],
+                                                      user_info["phone_number"],
+                                                      user_info["approval_status"]):
                     current_app.logger.error("Unable to process the approval request")
                     return {"status" : "Failure: Unable to complete the operation"}, 400
                 return {"status" : "Success"}, 200
 
             if request_id == 8: # Delete a member from the friend circle
-                pass
+                if not objGDBUser.delete_member_from_friend_circle(user_info["friend_circle_id"],
+                                                               user_info["referrer_user_id"],
+                                                               user_info["referred_user_id"],
+                                                               list_output):
+                    current_app.logger.error("Unable to delete the member from friend circle")
+                    return {"status": "Failure in deleting the member"}, 400
+                return {"status":"success"}, 200
 
             if request_id == 9: # Delete the friend circle
-                pass
+                if not objGDBUser.delete_friend_circle(user_info["referrer_user_id"],
+                                                                   user_info["friend_circle_id"],
+                                                                    list_output):
+                    current_app.logger.error("Unable to delete the  friend circle")
+                    return {"status": "Failure in deleting the friend circle"}, 400
+                return {"status": "success"}, 200
 
 
             if request_id == 100: # purely for testing purposes
@@ -541,16 +560,12 @@ class InterestManagement(Resource):
 
         if request_id == 3:
             # get all interests by friend circle
-            if objGDBUser.get_category_interest(friend_circle_id, loutput):
-                print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
-            else:
-                return {"status": "failure"}, 400
             loutput1 = []
             if objGDBUser.get_subcategory_interest(friend_circle_id, loutput1):
                 print("successfully retrieved the interest categories for friend circle id:", friend_circle_id)
             else:
                 return {"status": "failure"}, 400
-            return {'categories': json.loads(json.dumps(loutput)), "subcategories":json.loads(json.dumps(loutput1))}, 200
+            return {"subcategories":json.loads(json.dumps(loutput1))}, 200
 
         if request_id == 4: # get the recently added interest for a given friend_circle
             list_output = []

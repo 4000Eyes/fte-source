@@ -149,12 +149,17 @@ class UserProductManagement(Resource):
 
                 if content["page_size"] is None or content["page_number"] is None or "sort_order" not in content:
                     current_app.logger.error("Page size or page number cannot be null")
+                    return {"failure": "Page size and/or page number is missing"}, 400
                     return False
                 loutput = []
 
-                if objSearch.search_gemift_products(content, output_list):
+                ret = objSearch.search_gemift_products(content, output_list)
+                if ret == 1:
                     print("The result is ", output_list)
                     return {"data": json.loads(json_util.dumps(output_list))}, 200
+                elif ret == 2: #no result
+                    current_app.logger.error("No data for the search")
+                    return {"data": "no data for search. No occasion , subcategory list or subcategory for friend circle "}, 200
                 else:
                     current_app.logger.error("Error executing the search by occasion function")
                     print("Error executing the search by occasion function ")
