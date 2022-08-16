@@ -371,12 +371,17 @@ class GDBUser(Resource):
                 print("The user id is", record["u.user_id"])
                 output_hash["phone_number"] = record["u.phone_number"]
                 output_hash["user_id"] = record["u.user_id"]
+            else:
+                txn.rollback()
+                current_app.logger.error("User not created in function insert user by phone")
+                return False
 
             if not self.update_friendlist(loutput, user_id, txn):
                 txn.rollback()
                 current_app.logger.error("We have an issue processing the registration request. Unable to friend list")
                 print("We have an issue processing the registration request. Unable to friend list")
                 return False
+
             objMongo = MongoDBFunctions()
             user_hash["referrer_user_id"] = None
             user_hash["user_id"] = output_hash["user_id"]
@@ -953,6 +958,7 @@ class GDBUser(Resource):
 
             for record in result:
                 loutput.append(record.data())
+
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -1993,6 +1999,13 @@ class GDBUser(Resource):
                 for record in result:
                     hsh["is_admin"] = 1
 
+                """
+                    szdate = "2010-01-01 12:00:00"
+                    szdate_obj = datetime.strptime(szdate, '%Y-%m-%d %H:%M:%S')
+                    utc_due_date = szdate_obj.astimezone(pytz.utc)
+                    utc_due_date_string = utc_due_date.strftime("%Y-%m-%d %H:%M:%S %Z%z")
+                    print ("The utc date is", utc_due_date_string)
+                """
                 if hsh["is_admin"] == 1:
                     friend_occasion_status = 1
                     is_active = 1
@@ -2353,16 +2366,23 @@ class GDBUser(Resource):
                 hsh["occasion_active_status"] = record["active_status"]
                 hsh["product_count"] = 0
                 if hsh["occasion_date"] is not None:
-                    if not obj_search.get_voted_product_count(record["custom_friend_circle_id"], hsh["occasion_name"],
-                            datetime.strptime(hsh["occasion_date"], '%d/%m/%Y').year,  l_product_count):
+                    if not obj_search.get_voted_product_count(hsh["friend_circle_id"], hsh["occasion_name"],
+                            str(datetime.strptime(hsh["occasion_date"], '%d/%m/%Y').year),  l_product_count):
                         current_app.logger.error("Unable to get the product count")
                         return False
                     hsh["product_count"] = l_product_count[0]["total_product"]
-
                 loutput.append(hsh)
-
             hsh_occasion = {}
             next_occasion = []
+            """
+            from datetime import datetime
+            import pytz    # $ pip install pytz
+            import tzlocal # $ pip install tzlocal
+            
+            local_timezone = tzlocal.get_localzone() # get pytz tzinfo
+            utc_time = datetime.strptime("2011-01-21 02:37:21", "%Y-%m-%d %H:%M:%S")
+            local_time = utc_time.replace(tzinfo=pytz.utc).astimezone(local_timezone)
+            """
             for occasion in loutput:
                 if occasion["occasion_date"] is None:
                     continue

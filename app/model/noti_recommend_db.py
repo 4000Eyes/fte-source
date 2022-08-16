@@ -297,11 +297,11 @@ class NotificationAndRecommendationDB(Resource):
         except Exception as e:
             current_app.logger.error("The error in function get message count is " + e)
             return False
-    def get_message_count(self, user_id, list_output):
+    def get_message_count(self, user_id, hsh_output):
         try:
             message_collection = pymongo.collection.Collection(g.db, "gemift_messages")
             result = message_collection.find({"$and":[{"user_id":user_id},{"is_seen":"N"}]}).count()
-            list_output.append({"message_count":result})
+            hsh_output["message_count"] = result
             return True
         except Exception as e:
             current_app.logger.error("The error in function get message count is " + e)

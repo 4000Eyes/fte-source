@@ -19,13 +19,13 @@ class RegisteredUserPreference(Resource):
         if request_type == "add_category":
             if not obj_gdb.link_user_to_personal_web_category(user_id, list_category_id):
                 current_app.logger.error("Unable to link category to the personal user")
-                return {"status": "Failure"}, 400
+                return {"Error": "Unable to link web category"}, 400
             return {"status": "Success"}, 200
 
         if request_type == "add_subcategory":
             if not obj_gdb.link_user_to_personal_web_subcategory(user_id, list_subcategory_id):
                 current_app.logger.error("Unable to link category to the personal user")
-                return {"status": "Failure"}
+                return {"Error": "Unable to link to interests"}, 400
             return {"status": "Success"}, 200
 
 
@@ -39,33 +39,33 @@ class RegisteredUserPreference(Resource):
         if request_type == "get_category":
             if not obj_gdb.get_personal_category_interest_by_user(user_id, list_output):
                 current_app.logger.error("Unable to get the interest for the personal user")
-                return {"status": "Failure"}, 400
+                return {"Error": "Unable to get category interests"}, 400
             return {'data': json.loads(json.dumps(list_output))}, 200
 
         if request_type == "get_subcategory":
             if not obj_gdb.get_personal_subcategory_interest_by_user(user_id, list_output):
                 current_app.logger.error("Unable to get the interest for the personal user")
-                return {"status": "Failure"}, 400
+                return {"Error": "Unable to get interests"}, 400
             return {'data': json.loads(json.dumps(list_output))}, 200
 
         if request_type == "get_match_score":
             obj_personal_user = RegisteredUserPreferenceDB()
             if not obj_personal_user.get_match_index(user_id,list_output):
                 current_app.logger.error("Unable to get the match index for the user")
-                return {"status": "Failure"}, 400
+                return {"Error": "Unable to get match score"}, 400
             return {"data":json.loads(json.dumps(list_output))}, 200
 
         if request_type == "get_stats":
             if not obj_gdb.get_total_interests_stats(list_output):
                 current_app.logger.error("Unable to get interest stats")
-                return {"status":"Failure"}, 400
+                return {"Error":"Unable to get total interest "}, 400
 
             if not obj_gdb.get_total_occasion_stats(list_output):
-                current_app.logger.error("Unable to get interest stats")
-                return {"status":"Failure"}, 400
+                current_app.logger.error("Unable to get occasion stats")
+                return {"Error":"Unable to get occasion stats"}, 400
 
             if not obj_gdb.get_total_friend_circle_stats(list_output):
-                current_app.logger.error("Unable to get interest stats")
-                return {"status":"Failure"}, 400
+                current_app.logger.error("Unable to get friend stats")
+                return {"Error":"Unable to get friend circle stats"}, 400
 
             return {"data": json.loads(json.dumps(list_output))}, 200

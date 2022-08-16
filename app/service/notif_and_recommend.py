@@ -35,7 +35,7 @@ class NotificationAndRecommendation(Resource):
                             l_friend_circle.append(row["friend_circle_id"])
 
                 if not obj_notification.friend_circle_with_no_occasion(user_id,l_friend_circle, list_output):
-                    return {"status": "Failure: Unable to get occasion reminders data"}, 400
+                    return {"Error": "Failure: Unable to get occasion reminders data"}, 400
 
                 # for item in user_output:
                 #     if item["relationship"] == "SECRET_FRIEND":
@@ -48,19 +48,19 @@ class NotificationAndRecommendation(Resource):
 
                 days_since_output = []
                 if not obj_notification.days_since_last_occasion(user_id, l_friend_circle, days_since_output):
-                    return {"status": "Failure. Unable to get the occasions created N days ago"}, 400
+                    return {"Error": "Failure. Unable to get the occasions created N days ago"}, 400
 
                 list_data.append({"days_since_occasion": days_since_output})
 
                 interest_output = []
                 if not obj_notification.get_interest_reminders(user_id, l_friend_circle, interest_output):
-                    return {"status": "Failure: Unable to get interest reminder data"}, 400
+                    return {"Error": "Failure: Unable to get interest reminder data"}, 400
 
                 list_data.append({"interest": interest_output})
 
                 no_interest_output = []
                 if not obj_notification.get_no_interest_users(user_id, l_friend_circle, no_interest_output):
-                    return {"status": "Failure: Unable to get no interest reminder data"}, 400
+                    return {"Error": "Failure: Unable to get no interest reminder data"}, 400
 
                 # nox_interest_output = []
                 # for item in user_output:
@@ -78,54 +78,47 @@ class NotificationAndRecommendation(Resource):
                 relationship_output = []
                 if not obj_notification.get_relationship_status(user_id, l_friend_circle, relationship_output):
                     current_app.logger.error("Unable to get the relationship data")
-                    return {"status": "Failure: Unable to get relationship data"}, 400
+                    return {"Error": "Failure: Unable to get relationship data"}, 400
 
                 list_data.append({"relationship": relationship_output})
 
                 approval_output = []
                 if not obj_notification.get_approval_requests(user_id, approval_output):
-                    return {"status": "Failure: Unable to get approval data"}, 400
+                    return {"Error": "Failure: Unable to get approval data"}, 400
                 if len(list_output) > 0:
                     list_data.append({"approval": approval_output})
 
                 contributor_approval_output = []
 
                 if not objFriend.get_open_invites(user_id,phone_number, contributor_approval_output):
-                    return {"status" : "Failure: Unable to get the list of open contributor approvals"}, 400
+                    return {"Error" : "Failure: Unable to get the list of open contributor approvals"}, 400
                 list_data.append({"contributor_invites" : contributor_approval_output})
 
                 list_unapproved_occasions = []
 
                 if not obj_gdb.get_unapproved_occasions(user_id, l_friend_circle, list_unapproved_occasions):
-                    return {"status": "Error in getting the occasion approval data"}, 200
+                    return {"Error": "Error in getting the occasion approval data"}, 200
 
                 list_data.append({"unapproved_occasions": list_unapproved_occasions})
 
-
-                list_output = []
-                if not obj_notification.get_message_count(user_id,list_output):
-                    current_app.logger.error("Unable to get message count for notification")
-                    return {"status": "Unablet to get message count"}, 400
-
-                list_data.append({"message_count":list_output})
                 return json.loads(json.dumps(list_data)), 200
 
             if request_id == 2: # for the app notification page
                 final_output = []
                 if not obj_gdb.get_occasion_by_user(user_id, list_output):
-                    return {"status": "Error in getting the occasion approval data"}, 200
+                    return {"Error": "Error in getting the occasion approval data"}, 200
                 final_output.append({"occasions":list_output})
 
 
                 contributor_approval_output = []
                 objFriend = FriendListDB()
                 if not objFriend.get_open_invites(user_id, phone_number, contributor_approval_output):
-                    return {"status" : "Failure: Unable to get the list of open contributor approvals"}, 400
+                    return {"Error" : "Failure: Unable to get the list of open contributor approvals"}, 400
                 final_output.append({"contributor_invites" : contributor_approval_output})
 
                 approval_output = []
                 if not obj_notification.get_approval_requests(user_id, approval_output):
-                    return {"status": "Failure: Unable to get approval data"}, 400
+                    return {"Error": "Failure: Unable to get approval data"}, 400
                 if len(list_output) > 0:
                     final_output.append({"approval": approval_output})
 
@@ -149,7 +142,7 @@ class NotificationAndRecommendation(Resource):
                             hsh[row["friend_circle_id"]] = 1
                             l_friend_circle.append(row["friend_circle_id"])
                 if not obj_gdb.get_unapproved_occasions(user_id, l_friend_circle, list_unapproved_occasions):
-                    return {"status": "Error in getting the occasion approval data"}, 200
+                    return {"Error": "Error in getting the occasion approval data"}, 200
                 return {"data":json.loads(json.dumps(list_unapproved_occasions))}, 200
             if request_id == 7: # Just get the occasion reminders only
                 pass
@@ -158,26 +151,32 @@ class NotificationAndRecommendation(Resource):
                 obj_gdb = GDBUser()
                 if not obj_gdb.get_total_interests_stats():
                     current_app.logger.error("Unable to get the interest stats")
-                    return {"status" : "Error in getting stats"}
+                    return {"Error" : "Error in getting stats"}
                 if not obj_gdb.get_total_occasion_stats():
                     current_app.logger.error("Unable to get the interest stats")
-                    return {"status" : "Error in getting stats"}
+                    return {"Error" : "Error in getting stats"}
                 if not obj_gdb.get_total_friend_circle_stats():
                     current_app.logger.error("Unable to get the interest stats")
-                    return {"status" : "Error in getting stats"}
+                    return {"Error" : "Error in getting stats"}
 
             if request_id == 9: # update notification messages
-                if obj_notification.update_message(user_id, message_id):
+                if not obj_notification.update_message(user_id, message_id):
                     current_app.logger.error("Unable to update the message")
-                    return {"status": "message failure"}, 400
+                    return {"Error": "message failure"}, 400
                 return {"status": "success"}, 200
 
             if request_id == 10: # get all messages
                 list_data = []
-                if obj_notification.get_messages(user_id, list_data):
+                if not obj_notification.get_messages(user_id, list_data):
                     current_app.logger.error("Unable to update the message")
-                    return {"status": "message failure"}, 400
+                    return {"Error": "message failure"}, 400
                 return {"status": json.loads(json.dumps(list_data))}, 200
+            if request_id == 11: #get message count
+                hsh_output = {}
+                if not obj_notification.get_message_count(user_id,hsh_output):
+                    current_app.logger.error("Unable to get message count for notification")
+                    return {"Error": "Unablet to get message count"}, 400
+                return json.loads(json.dumps({"message_count":hsh_output["message_count"]})), 200
             """
             check if the user is admin for any friend circles
             """

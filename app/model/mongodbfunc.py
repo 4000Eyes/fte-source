@@ -73,7 +73,7 @@ class MongoDBFunctions():
     def insert_user(self, user_hash):
         #mage chagnes on 01/13/2022 to add age to mongo db
         try:
-            if "user_id" not in user_hash and "email_address" not in user_hash and "phone_number"  not in user_hash:
+            if "user_id" not in user_hash or "email_address" not in user_hash or "phone_number"  not in user_hash:
                 current_app.logger.error("Required field either user id or email address is missing")
                 return False
             user_hash["password"] = user_hash["password"] if "password" in user_hash else None

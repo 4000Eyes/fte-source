@@ -10,7 +10,7 @@ class CategoryManagement(Resource):
             content = request.get_json()
             if content is None:
                 current_app.logger.error("No arguments passed to the api call /api/category(post). check parameters")
-                return {"status": "failure"}, 500
+                return {"Error": "Not all parameters are sent"}, 500
             print ("The content is ", content)
             request_id = content["request_id"] if "request_id" in content else None
             value = content["value"] if "value" in content else None
@@ -32,27 +32,27 @@ class CategoryManagement(Resource):
             output_hash = {}
             if request_id == 1:
                 if not objCategory.add_merch_category(value,description,age_lo, age_hi, gender, output_hash):
-                    return {"status": "Failure"},400
+                    return {"Error": "Unable to add merch category"},400
                 print ("Successfully added ", value, output_hash.get("merch_category_id"))
                 return {"merch_category_id": output_hash.get("merch_category_id")}, 200
             if request_id == 2:
                 if not objCategory.add_web_category(value,description,age_lo, age_hi, gender, output_hash):
-                    return {"status": "Failure"},400
+                    return {"Error": "Unable to add web category"},400
                 print ("Successfully added ", value, output_hash.get("web_category_id"))
                 return {"web_category_id": output_hash.get("web_category_id")}, 200
             if request_id == 3:
                 if not objCategory.add_web_subcategory(web_subcategory_id, value,description, parent_id, age_lo, age_hi, gender,image_url, output_hash):
-                    return {"status": "Failure"},400
+                    return {"Error": "Unable to add interests"},400
                 print ("Successfully added ", value, output_hash.get("web_subcategory_id"))
                 return {"web_subcategory_id": output_hash.get("web_subcategory_id")}, 200
             if request_id == 4:
                 if not objCategory.add_brand(value,description, age_lo, age_hi, gender, output_hash):
-                    return {"status": "Failure"},400
+                    return {"Error": "Unable to addd brand"},400
                 print ("Successfully added ", value, output_hash.get("brand_id"))
                 return {"brand_id": output_hash.get("brand_id")}, 200
             if request_id == 5: # link subcategory to category
                 if not objCategory.link_subcategory(web_category_id, web_subcategory_id,output_hash):
-                    return {"status": "Failure"},400
+                    return {"Error": "Unable to link subcategory"},400
                 print ("Successfully added ", value, output_hash.get("web_subcategory_id"))
                 return {"status": "success"}, 200
             if request_id == 6: # link brand to subcategory
@@ -70,7 +70,7 @@ class CategoryManagement(Resource):
         except Exception as e:
             current_app.logger.error("Error in processing the request" + str(e))
             print ("The error is ", e)
-            return {"status": "Failure"}, 500
+            return {"Error": "Unable to process the request " + str(e)}, 500
 
     def get(self):
         loutput = []
@@ -88,30 +88,30 @@ class CategoryManagement(Resource):
         output = []
         if request_id == 1 :
             if not objCategory.get_web_category(output):
-                return {"status": "Error in fetching the category"}, 400
+                return {"Error": "Error in fetching the category"}, 400
             return json.loads(json.dumps(output)), 200
 
         if request_id == 5:
             if not objCategory.get_distinct_category_subcategory(output):
-                return {"status": "Error in fetching the subcategory to brands combo"}, 400
+                return {"Error": "Error in fetching the subcategory to brands combo"}, 400
             return {"data": json.loads(json.dumps(output))}, 200
 
         if age_lo is None or age_hi is None or gender is None:
-            return {"status": " Age and gender cannot be null"}, 400
+            return {"Error": " Age and gender cannot be null"}, 400
 
         if request_id == 2:
             if not objCategory.get_web_subcategory(category_id,age_lo, age_hi, gender, output):
-                return {"status": "Error in fetching the subcategory"}, 400
+                return {"Error": "Error in fetching the subcategory"}, 400
             return {json.loads((json.dumps(output)))}, 200
 
         if request_id == 3:
             if not objCategory.get_brands( age_lo, age_hi, gender,  output):
-                return {"status": "Error in fetching the brands"}, 400
+                return {"Error": "Error in fetching the brands"}, 400
             return {"data": json.loads(json.dumps(output))}, 200
 
         if request_id == 4:
             if not objCategory.get_web_subcategory_brands(subcategory_brand_list, age_lo, age_hi, gender, output):
-                return {"status": "Error in fetching the subcategory to brands combo"}, 400
+                return {"Error": "Error in fetching the subcategory to brands combo"}, 400
             return output, 200
 
 

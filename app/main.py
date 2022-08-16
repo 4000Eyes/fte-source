@@ -17,6 +17,7 @@ from flask import Flask, request, g
 from app.config import config_by_name
 from app.model.extensions import NeoDB, RedisCache
 from app.service.extensions import logs
+from celery import Celery
 import pymongo
 
 flask_bcrypt = Bcrypt()
@@ -25,6 +26,8 @@ api = Api()
 dbx = MongoEngine()
 cloud_mongodb = PyMongo()
 
+BROKER_URL = 'redis://krisraman:Gundan123@@redis-10913.c1.us-east1-2.gce.cloud.redislabs.com:10913/0'
+BACKEND_URL = 'redis://krisraman:Gundan123@@redis-10913.c1.us-east1-2.gce.cloud.redislabs.com:10913/0'
 def create_app(config_name: str):
     """Main app factory, runs all the other sections"""
     app = Flask(__name__.split(".")[0])
@@ -56,12 +59,12 @@ def create_app(config_name: str):
         api.init_app(app)
         register_extensions(app)
         cloud_mongodb.init_app(app)
-
+        celery = Celery(broker=BROKER_URL,backend=BACKEND_URL)
     @app.before_request
     def before_request():
         g.db = cloud_mongodb.db
-
-
+        g.celery = celery
+        #g.celery.send_task("Multiply two numbers", (43,34))
     @app.after_request
     def after_request(response):
         """ Logging after every request. """

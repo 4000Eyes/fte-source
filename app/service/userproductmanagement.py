@@ -36,7 +36,7 @@ class UserProductManagement(Resource):
             print ("The values are", content["request_id"], content["product_id"])
 
             if "request_id" not in content:
-                return {"status": "Input argument (request_id) is empty"}, 400
+                return {"Error": "Input argument (request_id) is empty"}, 400
 
             # #regex = re.compile('[@_!#$%^&*()<>?/\|}{~:]')
             #regex = re.compile('()')
@@ -121,15 +121,14 @@ class UserProductManagement(Resource):
                 if content["age"] is None and content["friend_circle_id"] is not None:
                     if not objGDBUser.get_friend_circle_attributes(content["friend_circle_id"], hsh):
                         current_app.logger.error("Unable to get friend circle_attributes")
-                        return {"status": "Failure: Unable to get the age and gender from friend circle"}, 400
+                        return {"Error": "Failure: Unable to get the age and gender from friend circle"}, 400
                     content["age"] = hsh["age"] if "age" in hsh else 0
                     if "gender" not in content or content["gender"] is None:
                         content["gender"] = hsh["gender"] if "gender" in hsh else None
-
                     if content["age"] is None or int(content["age"]) <= 0 or content["gender"] is None or \
                             len(set(content["gender"])& set( ["M","F","A"])) != len(content["gender"]):
                         current_app.logger.error ("Age and gender do not have valid values")
-                        return False
+                        return {"Error": "Age and Gender do not have valid values"}, 400
 
                 lcat = []
                 lsubcat = []
@@ -139,7 +138,7 @@ class UserProductManagement(Resource):
                     if objGDBUser.get_subcategory_interest(content["friend_circle_id"], lsubcat):
                         print("successfully retrieved the interest categories for friend circle id:", content["friend_circle_id"])
                     else:
-                        return {"status": "failure: Unable to get subcategories for the friend circle id"}, 400
+                        return {"Error": "failure: Unable to get subcategories for the friend circle id"}, 400
 
                     if len(lsubcat) > 0:
                         content["subcategory"] = []
@@ -150,7 +149,7 @@ class UserProductManagement(Resource):
                 if content["page_size"] is None or content["page_number"] is None or "sort_order" not in content:
                     current_app.logger.error("Page size or page number cannot be null")
                     return {"failure": "Page size and/or page number is missing"}, 400
-                    return False
+
                 loutput = []
 
                 ret = objSearch.search_gemift_products(content, output_list)
@@ -163,23 +162,23 @@ class UserProductManagement(Resource):
                 else:
                     current_app.logger.error("Error executing the search by occasion function")
                     print("Error executing the search by occasion function ")
-                    return {"status": "Error executing the search" }, 400
+                    return {"Error": "Error executing the search" }, 400
 
             if content["request_id"] == 2:
                 # get occasions for a secret friend and by given price point
                 if objSearch.search_by_occasion_price(content, output_list):
                     current_app.logger.error("Unable to get search data by occasion and price point")
-                    return {"status": "Failure Unable to get search data by occasion and price point"}, 400
+                    return {"Error": "Failure Unable to get search data by occasion and price point"}, 400
                 return {"data": json.loads(json_util.dumps(output_list))}, 200
             if content["request_id"] == 3:
                 loutput = []
                 if not objGDBUser.get_subcategory_interest(content["friend_circle_id"], loutput):
                     current_app.logger.error("Unable to get the interest for friend circle id " + content["friend_circle_id"])
-                    return {"status": "Failure in extracting interests"}, 400
+                    return {"Error": "Failure in extracting interests"}, 400
                 content["subcategory"] = list(record["subcategory_name"] for record in loutput )
                 if objSearch.search_by_subcategory(content, output_list):
                     current_app.logger.error("Unable to get search data by subcategory")
-                    return {"status": "Failure Unable to get search data by subcategory"}, 400
+                    return {"Error": "Failure Unable to get search data by subcategory"}, 400
                 # get products by subcategory
                 return {"data": json.loads(json_util.dumps(output_list))}, 200
             if content["request_id"] == 4:
@@ -187,13 +186,11 @@ class UserProductManagement(Resource):
                 loutput = []
                 if not objGDBUser.get_category_interest(content["friend_circle_id"], loutput):
                     current_app.logger.error("Unable to get the interest for friend circle id " + content["friend_circle_id"])
-                    return {"status": "Failure in extracting interests"}, 400
+                    return {"Error": "Failure in extracting interests"}, 400
                 content["category"] = list(record["category_name"] for record in loutput )
-                content["category"] = "Electronics"
-                content["color"] = "Blue, Black"
                 if not objSearch.search_by_category(content, output_list):
                     current_app.logger.error("Unable to get search data by category")
-                    return {"status": "Failure Unable to get search data by category"}, 400
+                    return {"Error": "Failure Unable to get search data by category"}, 400
                 return {"data": json.dumps(output_list)}, 200
             if content["request_id"] == 5:
                 # get all the voted products
@@ -206,22 +203,22 @@ class UserProductManagement(Resource):
                 if not objSearch.get_voted_products(content, output_list):
                     current_app.logger.error("Unable to get voted products")
                     print("Friend Circle ID , Unable to get votes products")
-                    return {"status": "Unable to get voted products"}, 400
+                    return {"Error": "Unable to get voted products"}, 400
                 return {"data": json.loads(json.dumps(output_list))}, 200
             if content["request_id"] == 7:
                 # get the product detail.
                 if "product_id" not in content:
                     current_app.logger.error("Product id is missing in the request")
-                    return {"status": "product id is required"},400
+                    return {"Error": "product id is required"},400
                 if not objSearch.get_product_detail(content, output_list):
                     current_app.logger.error("Unable to product detail for " + content["product_id"])
                     print("Unable to product detail for ", content["product_id"])
-                    return {"status", "Unable to product detail for ", content["product_id"]}, 400
+                    return {"Error", "Unable to product detail for ", content["product_id"]}, 400
                 return {"data": json.loads(json_util.dumps(output_list))}, 200
         except Exception as e:
             current_app.logger.error(e)
             print("The error is  catch all excception ", e)
-            return False
+            return {"Error":"Some issues " + str(e)}, 400
 
     def post(self):
         try:
@@ -248,12 +245,12 @@ class UserProductManagement(Resource):
                 if not objSearch.vote_product(content):
                     current_app.logger.error("Issue with inserting vote for product", content["product_id"])
                     print("Unable to insert the vote", content["product_id"])
-                    return {"status", "Unable to insert vote for ", content["product_id"]}, 400
+                    return {"Error", "Unable to insert vote for ", content["product_id"]}, 400
                 return {"Status": "Success"}
         except Exception as e:
             current_app.logger.error(e)
             print("The error is  catch all excception ", e)
-            return False
+            return {"Error": "Exception occured" + str(e)}
 
 
 
@@ -268,7 +265,7 @@ class UserSearchManagement(Resource):
         if objSearch.get_users(content["text"], output):
             print ("The output is", output)
             return {"data": json.loads(json_util.dumps(output))}, 200
-        return {"status": "Error in Search"}, 400
+        return {"Error": "Error in search"}, 400
 
 class AllCategoryRelatedManagement(Resource):
     def get(self):
@@ -279,4 +276,4 @@ class AllCategoryRelatedManagement(Resource):
         if objSearch.get_cat_hierarchy(content["text"], output):
             print ("The output is", output)
             return {"data": json.loads(json_util.dumps(output))}, 200
-        return {"status": "Error in Search"}, 400
+        return {"Error": "Error in Search"}, 400

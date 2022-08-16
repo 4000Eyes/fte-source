@@ -218,6 +218,7 @@ class SearchDB:
                 subcategory_hash["text"]["query"] = inputs["subcategory"]
                 subcategory_hash["text"]["path"] = "interest"
                 if occasion_flag == 1 or category_flag == 1:
+                    print ("I am inside subcategory hash")
                     final_filter_list.append(subcategory_hash)
                 else:
                     must_class_hash = subcategory_hash
@@ -236,9 +237,9 @@ class SearchDB:
 
             sort_string = {"$sort": { "price": sort_order }}
 
-            skip_size = inputs["page_size"] * (inputs["page_size"] -1 )
+            skip_size = inputs["page_size"] * (inputs["page_number"] -1 )
             skip_string = {"$skip": skip_size}
-            limit_string = {"$limit": inputs["page_number"]}
+            limit_string = {"$limit": inputs["page_size"]}
 
             pipeline = [search_string, sort_string, skip_string, limit_string]
             print ("The pipeline query is", pipeline)
