@@ -30,7 +30,7 @@ class FriendCircleHelper:
             for user in user_info:
                 friend_exists = 0
                 user["admin_friend_id"] = admin_friend_id
-                if objUser.get_user_by_phone(user["phone_number"], user_output) :
+                if objUser.get_user_by_phone(user["phone_number"],user["country_code"], user_output) :
                     if len(user_output) == 1:
                         user["linked_status"] = 1 if "user_id" in user_output else 0
                         user["linked_user_id"] = user_output["user_id"] if "user_id" in user_output else None

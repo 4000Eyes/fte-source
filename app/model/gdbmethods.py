@@ -80,7 +80,15 @@ class GDBUser(Resource):
         try:
             query = "MATCH (u:User) " \
                     "WHERE u.user_id = $user_id_ " \
-                    "RETURN u.email_address, u.user_id, u.user_type, u.first_name, u.last_name, u.phone_number, u.location, u.gender"
+                    "RETURN u.email_address, " \
+                    "u.user_id, " \
+                    "u.user_type, " \
+                    "u.first_name, " \
+                    "u.last_name, " \
+                    "u.country_code," \
+                    "u.phone_number, " \
+                    "u.location, " \
+                    "u.gender"
             results = driver.run(query, user_id_=user_id)
             if results is None:
                 print("user does not exist")
@@ -93,6 +101,7 @@ class GDBUser(Resource):
                 output_hash["user_type"] = record["u.user_type"]
                 output_hash["first_name"] = record["u.first_name"]
                 output_hash["last_name"] = record["u.last_name"]
+                output_hash["country_code"] = record["u.country_code"]
                 output_hash["phone_number"] = record["u.phone_number"]
                 output_hash["location"] = record["u.location"]
                 output_hash["gender"] = record["u.gender"]
@@ -110,7 +119,7 @@ class GDBUser(Resource):
             output_hash["user_type"] = None
             return False
 
-    def get_user_by_phone(self, phone_number, output_data):
+    def get_user_by_phone(self, phone_number, country_code, output_data):
 
         try:
             driver = NeoDB.get_session()
@@ -119,12 +128,21 @@ class GDBUser(Resource):
                 print("Driver is not initiated get_user_by_phone")
                 return 0
             print("Inside the gdb user all function")
-            query = "MATCH (u:User) " \
-                    "WHERE u.phone_number = $phone_number_ " \
-                    "RETURN u.user_id, u.email_address, u.user_type, u.first_name, u.last_name, u.image_url, " \
-                    "u.phone_number, u.location, u.gender"
+            output_data["user_id"] = None
+            query = "MATCH (u:User {phone_number:$phone_number_,country_code:$country_code_}) " \
+                    "RETURN " \
+                    "u.user_id," \
+                    " u.email_address," \
+                    " u.user_type," \
+                    " u.first_name," \
+                    " u.last_name," \
+                    " u.image_url, " \
+                    "u.country_code," \
+                    " u.phone_number," \
+                    " u.location," \
+                    " u.gender"
 
-            results = driver.run(query, phone_number_=phone_number)
+            results = driver.run(query, phone_number_=phone_number, country_code_=country_code)
             if results is None:
                 print("user does not exist")
                 output_data = None
@@ -132,6 +150,7 @@ class GDBUser(Resource):
             for record in results:
                 print("The user is", record)
                 output_data["user_id"] = record["u.user_id"]
+                output_data["country_code"] = record["u.country_code"]
                 output_data["phone_number"] = record["u.phone_number"]
                 output_data["user_type"] = record["u.user_type"]
                 output_data["first_name"] = record["u.first_name"]
@@ -144,6 +163,7 @@ class GDBUser(Resource):
         except neo4j.exceptions.Neo4jError as e:
             print("THere is a syntax error", e.message, e.metadata)
             output_data["user_id"] = None
+            output_data["country_code"] = None
             output_data["phone_number"] = None
             output_data["user_type"] = None
             output_data["password"] = None
@@ -151,6 +171,7 @@ class GDBUser(Resource):
         except Exception as e:
             print("THere is a syntax error", e)
             output_data["user_id"] = None
+            output_data["country_code"] = None
             output_data["phone_number"] = None
             output_data["user_type"] = None
             output_data["password"] = None
@@ -173,7 +194,7 @@ class GDBUser(Resource):
                     "WHERE u.email_address = $email_address_ " \
                     "RETURN u.user_id as user_id, u.email_address as email_address, u.user_type as user_type, " \
                     "u.password as password, u.first_name as first_name, u.last_name as last_name, u.gender as gender," \
-                    "u.location as location, u.phone_number as phone_number"
+                    "u.location as location, u.phone_number as phone_number, u.country_code as country_code"
 
             results = driver.run(query, email_address_=email_address)
             if results is None:
@@ -185,6 +206,7 @@ class GDBUser(Resource):
                 output_data["email_address"] = record["email_address"]
                 output_data["user_type"] = record["user_type"]
                 output_data["password"] = record["password"]
+                output_data["country_code"] = record["country_code"]
                 output_data["phone_number"] = record["phone_number"]
                 output_data["first_name"] = record["first_name"]
                 output_data["last_name"] = record["last_name"]
@@ -227,18 +249,24 @@ class GDBUser(Resource):
                 if "user_id" not in record:
                     break;
                 user_id = record["user_id"]
-                """
-                if record["linked_user_id"] is not None:
-                    output_hash[
-                        "outcome"] = "User already exists for this email and phone combination. Route it to support"
-                    output_hash["redirect"] = "Login"
-                    current_app.logger.error(
-                        "User already exists for this email and phone combination. Route it to support" + user_hash.get(
-                            "email_address"))
-                    return False
-                """
+
             if user_id is None:
                 user_id = self.get_id()
+
+            query = "CREATE (u:User) " \
+                    " SET u.email_address = $email_address_, " \
+                    "u.password = $password_, " \
+                    "u.user_id = $user_id_, " \
+                    "u.country_code = $country_code_, " \
+                    "u.phone_number = $phone_number_, " \
+                    " u.gender = $gender_," \
+                    " u.user_type = $user_type_, " \
+                    "u.first_name=$first_name_, " \
+                    "u.last_name=$last_name_, " \
+                    "u.location = $location_," \
+                    " u.mongo_indexed = $mongo_indexed_, " \
+                    "u.image_url = $image_url_" \
+                    " RETURN u.email_address, u.user_id"
 
             query = "CREATE (u:User) " \
                     " SET u.email_address = $email_address_, u.password = $password_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
@@ -251,6 +279,7 @@ class GDBUser(Resource):
                              user_id_=str(user_id),
                              gender_=user_hash.get("gender"),
                              phone_number_=user_hash.get("phone_number"),
+                             country_code = user_hash.get("country_code"),
                              user_type_=user_hash.get("user_type"),
                              first_name_=user_hash.get("first_name"),
                              last_name_=user_hash.get("last_name"),
@@ -347,15 +376,26 @@ class GDBUser(Resource):
                 user_id = self.get_id()
 
             query = "CREATE (u:User) " \
-                    " SET u.email_address = $email_address_, u.password = $password_, u.user_id = $user_id_, u.phone_number = $phone_number_, " \
-                    " u.gender = $gender_, u.user_type = $user_type_, u.first_name=$first_name_, u.last_name=$last_name_, u.location = $location_," \
-                    " u.mongo_indexed = $mongo_indexed_, u.image_url = $image_url_" \
-                    " RETURN u.phone_number, u.user_id"
+                    " SET " \
+                    "u.email_address = $email_address_, " \
+                    "u.password = $password_," \
+                    " u.user_id = $user_id_, " \
+                    " u.country_code = $country_code_," \
+                    "u.phone_number = $phone_number_, " \
+                    " u.gender = $gender_, " \
+                    "u.user_type = $user_type_," \
+                    " u.first_name=$first_name_, " \
+                    "u.last_name=$last_name_, " \
+                    "u.location = $location_," \
+                    " u.mongo_indexed = $mongo_indexed_, " \
+                    "u.image_url = $image_url_" \
+                    " RETURN u.country_code, u.phone_number, u.user_id"
 
             result = txn.run(query, email_address_=str(user_hash.get('email_address')),
                              password_=str(user_hash.get('password')),
                              user_id_=str(user_id),
                              gender_=user_hash.get("gender"),
+                             country_code_=user_hash.get("country_code"),
                              phone_number_=user_hash.get("phone_number"),
                              user_type_=user_hash.get("user_type"),
                              first_name_=user_hash.get("first_name"),
@@ -370,6 +410,7 @@ class GDBUser(Resource):
             if info > 0 and record is not None:
                 print("The user id is", record["u.user_id"])
                 output_hash["phone_number"] = record["u.phone_number"]
+                output_hash["country_code"] = record["u.country_code"]
                 output_hash["user_id"] = record["u.user_id"]
             else:
                 txn.rollback()
@@ -499,11 +540,17 @@ class GDBUser(Resource):
         try:
 
             fe_query = "MATCH (a:friend_list) " \
-                       " WHERE a.phone_number = $phone_number_  " \
-                       " return a.user_id as user_id, a.friend_id as friend_id, a.linked_user_id as linked_user_id, a.linked_status_id as linked_status_id"
+                       " WHERE a.phone_number = $phone_number_ and " \
+                       " a.country_code = $country_code_  " \
+                       " return a.user_id as user_id," \
+                       " a.friend_id as friend_id," \
+                       " a.linked_user_id as linked_user_id," \
+                       " a.linked_status_id as linked_status_id"
 
             if input_hash["phone_number"] is not None:
-                result = txn.run(fe_query, phone_number_=input_hash["phone_number"])
+                result = txn.run(fe_query,
+                                 phone_number_=input_hash["phone_number"],
+                                 country_code_ = input_hash["country_code"])
             for record in result:
                 r = {}
                 r["user_id"] = record["user_id"]
@@ -539,8 +586,14 @@ class GDBUser(Resource):
                         "a.linked_status_id as linked_status_id"
 
             fp_query = "MATCH (a:friend_list) " \
-                       " WHERE a.phone_number = $phone_number_ " \
-                       " return a.user_id, a.friend_id, a.linked_user_id, a.linked_status_id"
+                       " WHERE " \
+                       "a.phone_number = $phone_number_ and" \
+                       " a.country_code = $country_code_ " \
+                       " return " \
+                       " a.user_id," \
+                       " a.friend_id," \
+                       " a.linked_user_id," \
+                       " a.linked_status_id"
 
             # if input_hash["email_address"] is not None and input_hash["phone_number"] is not None:
             #     result = txn.run(fep_query, email_address_=input_hash["email_address"],
@@ -770,7 +823,7 @@ class GDBUser(Resource):
             return False
 
     # def get_user_role_as_contrib_secret_friend(self, email_address, referrer_user_id, friend_circle_id, hshOutput): # phone primary key support
-    def get_user_role_as_contrib_secret_friend(self, phone_number, referrer_user_id, friend_circle_id, hshOutput):
+    def get_user_role_as_contrib_secret_friend(self, country_code, phone_number, referrer_user_id, friend_circle_id, hshOutput):
         try:
             driver = NeoDB.get_session()
             result = None
@@ -779,71 +832,76 @@ class GDBUser(Resource):
 
             query = " call { " \
                     "MATCH (x:friend_circle)-[rr]->(m:friend_list) " \
-                    "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
+                    "WHERE x.friend_circle_id = $friend_circle_id_ AND" \
+                    " m.country_code = $country_code_ AND " \
                     " m.phone_number = $phone_number_ AND " \
                     " m.friend_id = $friend_id_  " \
-                    " RETURN m.phone_number as phone_number, m.user_id as user_id, m.friend_id as friend_id, " \
+                    " RETURN m.phone_number as phone_number, " \
+                    "m.country_code as country_code," \
+                    " m.user_id as user_id," \
+                    " m.friend_id as friend_id, " \
                     " type(rr) as relationship" \
                     " UNION " \
                     "MATCH (x:friend_circle)<-[rr]-(m:friend_list) " \
                     "WHERE x.friend_circle_id = $friend_circle_id_ AND " \
                     " m.phone_number = $phone_number_ AND" \
+                    " m.country_code = $country_code_ AND " \
                     " m.friend_id = $friend_id_  " \
-                    " RETURN  m.phone_number as phone_number, m.user_id as user_id, m.friend_id as friend_id, " \
+                    " RETURN  " \
+                    "m.phone_number as phone_number," \
+                    " m.country_code as country_code, " \
+                    " m.user_id as user_id," \
+                    " m.friend_id as friend_id, " \
                     " type(rr) as relationship " \
                     " } " \
                     " return " \
                     " user_id ," \
-                    " friend_id, " \
+                    " friend_id," \
+                    " country_code, " \
                     " phone_number, " \
                     " CASE when relationship = 'CONTRIBUTOR'  then 'Y' else 'N' end as contrib_flag, " \
                     " CASE when relationship = 'SECRET_FRIEND'  then 'Y' else 'N'  end as secret_friend_flag, " \
                     " CASE when relationship = 'CIRCLE_CREATOR'  then 'Y' else 'N' end  as circle_creator_flag "
 
-            result = driver.run(query, friend_circle_id_=friend_circle_id, phone_number_=phone_number,
+            result = driver.run(query, friend_circle_id_=friend_circle_id,
+                                country_code_ = country_code,
+                                phone_number_=phone_number,
                                 friend_id_=referrer_user_id)
             counter = 0
             phone_number = None
             for record in result:
-                if counter == 0 or record["phone_number"] != phone_number:
-                    phone_number = record["phone_number"]
+                if counter == 0 or str(record["country_code"])+ str(record["phone_number"]) != phone_number:
+                    phone_number = str(record["country_code"]) + str(record["phone_number"])
 
                     # phone primary key support
 
-                    # hshOutput[record["email_address"]] = collections.defaultdict(dict)
-                    # hshOutput[record["email_address"]]["contrib_flag"] = "N"
-                    # hshOutput[record["email_address"]]["secret_friend_flag"] = "N"
-                    # hshOutput[record["email_address"]]["circle_creator_flag"] = "N"
-                    # hshOutput[record["email_address"]]["user_id"] = None
-                    # hshOutput[record["email_address"]]["friend_id"] = None
-
-                    hshOutput[record["phone_number"]] = collections.defaultdict(dict)
-                    hshOutput[record["phone_number"]]["contrib_flag"] = "N"
-                    hshOutput[record["phone_number"]]["secret_friend_flag"] = "N"
-                    hshOutput[record["phone_number"]]["circle_creator_flag"] = "N"
-                    hshOutput[record["phone_number"]]["user_id"] = None
-                    hshOutput[record["phone_number"]]["friend_id"] = None
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])] = collections.defaultdict(dict)
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["contrib_flag"] = "N"
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["secret_friend_flag"] = "N"
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["circle_creator_flag"] = "N"
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["user_id"] = None
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["friend_id"] = None
 
                     counter = 1
 
-                if hshOutput[record["phone_number"]]["user_id"] is None:
-                    hshOutput[record["phone_number"]]["user_id"] = record["user_id"]
-                    hshOutput[record["phone_number"]]["friend_id"] = record["friend_id"]
+                if hshOutput[str(record["country_code"])+ str(record["phone_number"])]["user_id"] is None:
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["user_id"] = record["user_id"]
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["friend_id"] = record["friend_id"]
 
-                if hshOutput[record["phone_number"]]["contrib_flag"] == "N" and record["contrib_flag"] == "Y":
-                    hshOutput[record["phone_number"]]["contrib_flag"] = record["contrib_flag"]
+                if hshOutput[str(record["country_code"])+ str(record["phone_number"])]["contrib_flag"] == "N" and record["contrib_flag"] == "Y":
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["contrib_flag"] = record["contrib_flag"]
                 else:
                     hshOutput[record["phone_number"]]["contrib_flag"] = "N"
 
-                if hshOutput[record["phone_number"]]["secret_friend_flag"] == "N" and record["secret_friend_flag"] == "Y":
-                    hshOutput[record["phone_number"]]["secret_friend_flag"] = record["secret_friend_flag"]
+                if hshOutput[str(record["country_code"])+ str(record["phone_number"])]["secret_friend_flag"] == "N" and record["secret_friend_flag"] == "Y":
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["secret_friend_flag"] = record["secret_friend_flag"]
                 else:
-                    hshOutput[record["phone_number"]]["secret_friend_flag"] = "N"
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["secret_friend_flag"] = "N"
 
-                if hshOutput[record["phone_number"]]["circle_creator_flag"] == "N" and record["circle_creator_flag"] == "Y":
-                    hshOutput[record["phone_number"]]["circle_creator_flag"] = record["circle_creator_flag"]
+                if hshOutput[str(record["country_code"])+ str(record["phone_number"])]["circle_creator_flag"] == "N" and record["circle_creator_flag"] == "Y":
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["circle_creator_flag"] = record["circle_creator_flag"]
                 else:
-                    hshOutput[record["phone_number"]]["circle_creator_flag"] = "N"
+                    hshOutput[str(record["country_code"])+ str(record["phone_number"])]["circle_creator_flag"] = "N"
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -854,6 +912,38 @@ class GDBUser(Resource):
         except Exception as e:
             current_app.logger.error(e)
             hshOutput.clear()
+            return False
+
+
+    def get_friend_circle_header(self, list_friend_circle_ids, loutput):
+        driver = NeoDB.get_session()
+        result = None
+        try:
+            # made changes on 01/11/2022. Changed the entire query.
+
+            query = " match (fc:friend_circle)<-[:CIRCLE_CREATOR]-(u:User) " \
+                     "  WHERE fc.friend_circle_id in $list_friend_circle_ids_"\
+                     " return " \
+                     " fc.friend_circle_id as friend_circle_id," \
+                     " fc.friend_circle_name as friend_circle_name," \
+                     " fc.secret_friend_id as secret_friend_id," \
+                     " fc.secret_friend_name as secret_first_name," \
+                     " fc.secret_last_name as secret_last_name," \
+                     " fc.image_url as image_url," \
+                    "  u.user_id as friend_circle_creator_id," \
+                    " u.first_name as friend_circle_creator_first_name," \
+                    " u.last_name as friend_circle_creator_last_name"
+            result = driver.run(query, list_friend_circle_ids_=list_friend_circle_ids)
+            for record in result:
+                loutput.append(record.data())
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error("There is an issue in friend circle header function " + str(e.message))
+            return False
+        except Exception as e:
+            current_app.logger.error("There is an issue in friend circle header function " + str(e))
             return False
 
     def get_friend_circle(self, friend_circle_id, loutput):
@@ -935,8 +1025,8 @@ class GDBUser(Resource):
 
             query = " match (pp:friend_list)<-[rr]->(xf:friend_circle) "\
                     " where ( pp.user_id = $user_id_ or pp.friend_id = $user_id_ " \
-                    " or xf.creator_id= $user_id_ ) and "\
-                    " xf.secret_friend_id <> $user_id_" \
+                    " or xf.creator_id = $user_id_ ) and" \
+                    " xf.creator_id <> $user_id_  "\
                     " return " \
                     " pp.user_id as user_id," \
                     " pp.friend_id as friend_id," \
@@ -953,12 +1043,17 @@ class GDBUser(Resource):
                     " xf.secret_last_name as secret_last_name," \
                     " xf.image_url as image_url"
 
+            qest = datetime.now()
             result = driver.run(query, user_id_=user_id)
+            qeft = datetime.now()
             counter = 0
-
             for record in result:
                 loutput.append(record.data())
+            qdeft = datetime.now()
 
+            qet = qeft - qest
+            qdet = qdeft - qest
+            print ("Execution and finish time are ", qet, qdet)
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -1234,16 +1329,20 @@ class GDBUser(Resource):
             current_app.logger.error(e.message)
             return False
 
-    def check_friend_circle_with_admin_and_secret_friend_by_phone(self, friend_user_id, secret_phone_number,
+    def check_friend_circle_with_admin_and_secret_friend_by_phone(self, friend_user_id, secret_country_code,secret_phone_number,
                                                                   output_hash):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (n:User)-[:CIRCLE_CREATOR]->(fc:friend_circle)-[SECRET_FRIEND]->(y:friend_list)" \
-                    " WHERE n.user_id = $friend_user_id_ " \
-                    " AND y.friend_id = $friend_user_id_ and" \
+                    " WHERE n.user_id = $friend_user_id_ and " \
+                    "  y.friend_id = $friend_user_id_ and" \
+                    " y.country_code = $country_code_ AND " \
                     " y.phone_number = $phone_number_  " \
                     " RETURN count(fc.friend_circle_id) as user_exists"
-            result = driver.run(query, friend_user_id_=friend_user_id, phone_number_=secret_phone_number)
+            result = driver.run(query,
+                                friend_user_id_=friend_user_id,
+                                country_code_=secret_country_code,
+                                phone_number_=secret_phone_number)
             record = result.single()
             if record is not None:
                 print("The user is ", record["user_exists"])
@@ -1992,25 +2091,44 @@ class GDBUser(Resource):
                 friend_occasion_status = 0
                 is_active = 0
                 check_admin_query = "MATCH (f:friend_circle) " \
-                                    " WHERE f.friend_circle_id = $friend_circle_id_ and" \
-                                    " f.creator_id = $user_id_" \
-                                    " return f.friend_circle_id as friend_circle_id "
+                                    " WHERE f.friend_circle_id = $friend_circle_id_" \
+                                    " return " \
+                                    "f.friend_circle_id as friend_circle_id ," \
+                                    "f.secret_friend_name as secret_first_name," \
+                                    "f.secret_last_name as secret_last_name," \
+                                    "f.secret_friend_id as secret_friend_id," \
+                                    "f.friend_circle_name as friend_circle_name," \
+                                    "f.creator_id as creator_id"
                 result = txn.run(check_admin_query, friend_circle_id_=friend_circle_id, user_id_=user_id)
                 for record in result:
-                    hsh["is_admin"] = 1
+                    if record["creator_id"] == user_id:
+                        hsh["is_admin"] = 1
+                    else:
+                        hsh["is_admin"] = 0
+                    hsh["creator_id"] = record["creator_id"]
+                    hsh["occasion_creator_id"] = user_id
+                    hsh["secret_first_name"] = record["secret_first_name"]
+                    hsh["secret_last_name"] = record["secret_last_name"]
+                    hsh["secret_friend_id"] = record["secret_friend_id"]
+                    hsh["friend_circle_name"] = record["friend_circle_name"]
+
 
                 """
-                    szdate = "2010-01-01 12:00:00"
-                    szdate_obj = datetime.strptime(szdate, '%Y-%m-%d %H:%M:%S')
-                    utc_due_date = szdate_obj.astimezone(pytz.utc)
+                    occasion_date = occasion_date + " 00:00:00"
+                    occasion_dt_obj = datetime.strptime(occasion_date, '%d-%m-%Y %H:%M:%S')
+                    utc_due_date = occasion_dt_obj.astimezone(pytz.utc)
                     utc_due_date_string = utc_due_date.strftime("%Y-%m-%d %H:%M:%S %Z%z")
                     print ("The utc date is", utc_due_date_string)
                 """
-                if hsh["is_admin"] == 1:
+                if "is_admin" in hsh and hsh["is_admin"] == 1:
                     friend_occasion_status = 1
                     is_active = 1
-                query = " CREATE (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_, " \
-                        "occasion_date:$occasion_date_, occasion_timezone:$occasion_timezone, created_dt:$created_dt_, friend_occasion_status:$friend_occasion_status_}) " \
+                query = " CREATE (f:friend_occasion{friend_circle_id:$friend_circle_id_, " \
+                        "occasion_id:$occasion_id_, " \
+                        "occasion_date:$occasion_date_, " \
+                        "occasion_timezone:$occasion_timezone, " \
+                        "created_dt:$created_dt_, " \
+                        " friend_occasion_status:$friend_occasion_status_}) " \
                         " WITH f " \
                         " MATCH(a:User WHERE (a.user_id = $user_id_)), " \
                         " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})," \
@@ -2051,6 +2169,67 @@ class GDBUser(Resource):
             txn.rollback()
             return False
 
+
+    def edit_occasion(self, user_id, friend_circle_id, occasion_id, occasion_date, occasion_timezone,
+                     output_hash):
+        try:
+            print("Inside the add occasion function")
+            friend_occasion = None
+
+            driver = NeoDB.get_session()
+
+            hshOutput = {}
+            if not self.check_user_in_friend_circle(user_id, friend_circle_id,hshOutput):
+                current_app.logger.error("Unable to get friend circle data for the user" + str(user_id))
+                return False
+
+            is_admin = 0
+            if "relation_type" in hshOutput:
+                if hshOutput["relation_type"] == "CIRCLE_CREATOR":
+                    is_admin = 1
+            if not is_admin:
+                current_app.logger.error("Only admin can edit occasions for now")
+                return False
+            query = " MATCH (f:friend_occasion{friend_circle_id:$friend_circle_id_, " \
+                    "occasion_id:$occasion_id_})" \
+                    "SET " \
+                    "f.occasion_date = $occasion_date_," \
+                    "f.occasion_timezone = $occasion_timezone_," \
+                    "f.updated_dt = $updated_dt_," \
+                    "f.updated_by = $user_id " \
+                    "return f.friend_circle_id as friend_circle_id " \
+
+            occasion_date = occasion_date + " 00:00:00"
+            occasion_dt_obj = datetime.strptime(occasion_date, '%d-%m-%Y %H:%M:%S')
+            utc_due_date = occasion_dt_obj.astimezone(pytz.utc)
+            utc_due_date_string = utc_due_date.strftime("%Y-%m-%d %H:%M:%S %Z%z")
+            print ("The utc date is", utc_due_date_string)
+
+            query_result = driver.run(query, created_dt_=self.get_datetime(),
+                                   friend_circle_id_=friend_circle_id,
+                                   user_id_=user_id,
+                                   occasion_id_=occasion_id,
+                                   occasion_date_=occasion_date,
+                                   occasion_timezone_=occasion_timezone,
+                                   updated_dt_=self.get_datetime()
+                                   )
+
+            for record in query_result:
+                output_hash["friend_circle_id"] = record["friend_circle_id"]
+
+            if "friend_circle_id" not in output_hash:
+                current_app.logger.error("Friend occasion not created")
+                return False
+
+                print("The  query is ", query_result.consume().query)
+                print("The  parameters is ", query_result.consume().parameters)
+
+                return True
+
+        except neo4j.exceptions.Neo4jError as e:
+            print("The error is ", e.message)
+            return False
+
     def create_custom_occasion(self, custom_occasion_name: str, friend_circle_id, frequency, creator_user_id, occasion_date, occasion_timezone, hsh):
 
         try:
@@ -2058,6 +2237,15 @@ class GDBUser(Resource):
             txn = driver.begin_transaction()
             status = 1
             occasion_id = None
+
+            """
+                occasion_date = occasion_date + " 00:00:00"
+                occasion_dt_obj = datetime.strptime(occasion_date, '%d-%m-%Y %H:%M:%S')
+                utc_due_date = occasion_dt_obj.astimezone(pytz.utc)
+                utc_due_date_string = utc_due_date.strftime("%Y-%m-%d %H:%M:%S %Z%z")
+                print ("The utc date is", utc_due_date_string)
+            """
+
             check_occasion_query = "match (b:occasion) " \
                                    "where b.friend_circle_id = $friend_circle_id_ and " \
                                    " toLower(trim(b.occasion_name)) = $occasion_name_ " \
@@ -2107,7 +2295,7 @@ class GDBUser(Resource):
             result = txn.run(check_admin_query, friend_circle_id_ = friend_circle_id, user_id_ = creator_user_id)
             for record in result:
                 hsh["is_admin"] = 1
-            if hsh["is_admin"] == 1:
+            if "is_admin" in hsh and hsh["is_admin"] == 1:
                 insert_occasion_query = "MERGE (b:friend_occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
                                         " ON CREATE SET " \
                                         "b.created_dt =$created_dt_," \
@@ -2190,7 +2378,7 @@ class GDBUser(Resource):
         try:
             driver = NeoDB.get_session()
             query = "MATCH (fo:friend_occasion{friend_circle_id:$friend_circle_id_ , occasion_id:$occasion_id_})<-[x:IS_MAPPED]-(o:occasion{occasion_id:$occasion_id_, friend_circle_id:$friend_circle_id_})" \
-                    " SET x.is_active  = 2" \
+                    " SET x.is_active  = -1" \
                     " return o.occasion_id"
             result = driver.run(query, occasion_id_ = occasion_id, friend_circle_id_ = friend_circle_id)
             if result is not None:
@@ -2248,7 +2436,8 @@ class GDBUser(Resource):
                     "o.occasion_id as occasion_id," \
                     "fc.secret_friend_id as secret_friend_id," \
                     "fc.secret_friend_name as secret_first_name," \
-                    "fc.secret_last_name as secret_last_name"
+                    "fc.secret_last_name as secret_last_name," \
+                    " fc.friend_circle_name as friend_circle_name"
 
             result = driver.run(query,
                              friend_circle_id_=friend_circle_id,
@@ -2269,15 +2458,17 @@ class GDBUser(Resource):
         try:
             driver = NeoDB.get_session()
             query = "MATCH " \
-                    " (f:friend_occasion{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})<-[x:IS_MAPPED]-(o:occasion) ," \
+                    " (f:friend_occasion" \
+                    "{friend_circle_id:$friend_circle_id_, occasion_id:$occasion_id_})<-[x:IS_MAPPED]-(o:occasion) ," \
                     " (b:User{user_id:$friend_id_})-[:CIRCLE_CREATOR]->(fc:friend_circle{friend_circle_id:$friend_circle_id_})" \
-                    " set x.is_active = 1 , f.updated_dt = $updated_dt_" \
+                    " set x.is_active = $approval_status , f.updated_dt = $updated_dt_" \
                     " RETURN f.friend_circle_id as friend_circle_id"
 
             result = driver.run(query,
                              friend_circle_id_=friend_circle_id,
                              friend_id_ = user_id,
                              occasion_id_=str(occasion_id),
+                             approval_status_ = status,
                              updated_dt_=self.get_datetime())
 
             for record in result:
@@ -2303,27 +2494,32 @@ class GDBUser(Resource):
         try:
             l_friend_circle = []
             user_output = []
+            now = datetime.now()
+
+            start_time = datetime.now()
             if not self.get_friend_circles(user_id, user_output):
                 current_app.logger.error("Unable to get the friend circle information")
                 return False
+
             hsh = {}
             for row in user_output:
                 if row["relationship"] == "SECRET_FRIEND" and row["user_id"] != user_id:
                     if row["approval_status"] is None:
                         row["approval_status"] = 0
-                    if (row["user_id"] == user_id and int(row["approval_status"]) == 1) or row["friend_id"] == user_id:
-
-                        if row["friend_circle_id"] not in hsh:
-                            hsh[row["friend_circle_id"]] = 1
-                            l_friend_circle.append(row["friend_circle_id"])
+                if (row["user_id"] == user_id and int(row["approval_status"]) == 1) or row["friend_id"] == user_id:
+                    if row["friend_circle_id"] not in hsh:
+                        hsh[row["friend_circle_id"]] = 1
+                        l_friend_circle.append(row["friend_circle_id"])
 
             if len(l_friend_circle) <= 0:
                 current_app.logger.info("This user is not part of any friend circle" + str(user_id))
                 return True
-
             if not self.get_occasion(l_friend_circle, user_id, loutput):
                 current_app.logger.error("Unable to get all occasions by user for " + str(user_id))
                 return False
+            end_time = datetime.now()
+            duration = end_time - start_time
+            print("The total API execution duration time is ", duration)
             return True
         except Exception as e:
             current_app.logger.error("Exception occured in get_occasion_by_user for user " + str(user_id))
@@ -2338,7 +2534,7 @@ class GDBUser(Resource):
                     " WHERE " \
                     " f.friend_circle_id in $friend_circle_id_ and " \
                     " f.friend_circle_id = fc.friend_circle_id and " \
-                    " b.status_id = 1 " \
+                    " b.status_id = 1" \
                     " RETURN a.user_id as user_id, f.occasion_date as occasion_date , " \
                     " fc.secret_friend_name as secret_friend_first_name, " \
                     " fc.secret_friend_last_name as secret_friend_last_name, " \
@@ -2348,13 +2544,15 @@ class GDBUser(Resource):
                     "b.occasion_frequency as occasion_frequency," \
                     "coalesce(f.friend_occasion_status,0) as friend_occasion_status," \
                     "case when x.is_active = 1 then 'Active' else 'Inactive' end as active_status"
+
+            occ_qest = datetime.now()
             result = driver.run(query,
                                 friend_circle_id_=l_friend_circle)
+            occ_qeft = datetime.now()
             hsh = {}
             for record in result:
                 l_product_count = []
-                print (record.data())
-                hsh = collections.defaultdict(dict)
+                #hsh = collections.defaultdict(dict)
                 hsh["occasion_id"] = record["occasion_id"]
                 hsh["occasion_date"] = record["occasion_date"]
                 hsh["occasion_frequency"] = record["occasion_frequency"]
@@ -2365,13 +2563,10 @@ class GDBUser(Resource):
                 hsh["friend_occasion_status"] = record["friend_occasion_status"]
                 hsh["occasion_active_status"] = record["active_status"]
                 hsh["product_count"] = 0
-                if hsh["occasion_date"] is not None:
-                    if not obj_search.get_voted_product_count(hsh["friend_circle_id"], hsh["occasion_name"],
-                            str(datetime.strptime(hsh["occasion_date"], '%d/%m/%Y').year),  l_product_count):
-                        current_app.logger.error("Unable to get the product count")
-                        return False
-                    hsh["product_count"] = l_product_count[0]["total_product"]
-                loutput.append(hsh)
+                loutput.append(hsh.copy())
+            occ_qdeft = datetime.now()
+
+            print ("Occasion queey execution time and data extraction time ", occ_qeft - occ_qest, occ_qdeft - occ_qest)
             hsh_occasion = {}
             next_occasion = []
             """
@@ -2383,6 +2578,7 @@ class GDBUser(Resource):
             utc_time = datetime.strptime("2011-01-21 02:37:21", "%Y-%m-%d %H:%M:%S")
             local_time = utc_time.replace(tzinfo=pytz.utc).astimezone(local_timezone)
             """
+            occ_pst = datetime.now()
             for occasion in loutput:
                 if occasion["occasion_date"] is None:
                     continue
@@ -2391,9 +2587,31 @@ class GDBUser(Resource):
                 if not self.calculate_next_occasion(occasion["occasion_date"], occasion["occasion_frequency"], hsh_occasion):
                     current_app.logger.error("Unable to get the next occasion data for " +  occasion["custom_friend_circle_id"])
                     return False
+                l_product_count.clear()
+
+                if not obj_search.get_voted_product_count(occasion["friend_circle_id"], occasion["occasion_name"],
+                                                          str(datetime.strptime(hsh_occasion["next_occasion_date"], '%d/%m/%Y').year),
+                                                          l_product_count):
+                    current_app.logger.error("Unable to get the product count")
+                    return False
+                hsh_occasion["product_count"] = l_product_count[0]["total_product"]
+                """
+                l_recommended_product_count = []
+                if not obj_search.get_recommended_product_vote_count(occasion["friend_circle_id"],
+                                                                     occasion["occasion_id"],
+                                                                     occasion["occasion_year"],
+                                                                     l_recommended_product_count):
+                    current_app.logger.error("Unable to get vote count for recommended product")
+                    return False
+                """
+
                 occasion.update(hsh_occasion)
 
+            occ_pet = datetime.now()
+
+            print ("Occasion process time is ", occ_pet - occ_pst)
             hsh_votes = {}
+            """
             if not self.get_occasion_votes(l_friend_circle, user_id, hsh_votes):
                 current_app.logger.error("Unable to get the vote details for friend circle id " )
                 return False
@@ -2402,8 +2620,7 @@ class GDBUser(Resource):
                 for row in loutput:
                     if friend_circle_id in hsh_votes:
                         row.update(hsh_votes[friend_circle_id])
-
-
+            """
             print("The  query is ", result.consume().query)
             print("The  parameters is ", result.consume().parameters)
             return True
@@ -2583,7 +2800,7 @@ class GDBUser(Resource):
             days_difference = current_date_time.date() - formatted_occasion_date.date()
             if days_difference.days < 0: # it is in the future
                 hsh_occasion["days_left"] = -days_difference.days
-                hsh_occasion["next_occasion_date"] = formatted_occasion_date.strftime('%d/%m/%y')
+                hsh_occasion["next_occasion_date"] = formatted_occasion_date.strftime('%d/%m/%Y')
                 hsh_occasion["message"] = "NA"
             elif days_difference.days > 0: # it is in the past
                 if frequency == "Every Year":
@@ -2600,7 +2817,7 @@ class GDBUser(Resource):
 
                     days_left = ((delta1 if delta1 > current_date_time else delta2) - current_date_time).days
                     hsh_occasion["days_left"] = days_left
-                    hsh_occasion["next_occasion_date"] = delta1.strftime('%d/%m/%y')
+                    hsh_occasion["next_occasion_date"] = delta1.strftime('%d/%m/%Y')
                     hsh_occasion["message"] = "NA" if "message" not in hsh_occasion else hsh_occasion["message"]
                 if frequency == "Every Month":
                     try:
@@ -2612,7 +2829,7 @@ class GDBUser(Resource):
                     next_occasion_date = transformed_date + relativedelta(months=1)
                     days_left = current_date_time.date() - next_occasion_date.date()
                     hsh_occasion["days_left"] = days_left.days
-                    hsh_occasion["next_occasion_date"] = next_occasion_date.strftime('%d/%m/%y')
+                    hsh_occasion["next_occasion_date"] = next_occasion_date.strftime('%d/%m/%Y')
 
                 if frequency == "Every Week":
                     try:
@@ -2624,11 +2841,11 @@ class GDBUser(Resource):
                     next_occasion_date = transformed_date + relativedelta(months=1)
                     days_left = current_date_time.date() - next_occasion_date.date()
                     hsh_occasion["days_left"] = days_left.days
-                    hsh_occasion["next_occasion_date"] = next_occasion_date.strftime('%d/%m/%y')
+                    hsh_occasion["next_occasion_date"] = next_occasion_date.strftime('%d/%m/%Y')
 
             else: # it is now
                 hsh_occasion["days_left"] = 0
-                hsh_occasion["next_occasion_date"] = formatted_occasion_date.strftime('%d/%m/%y')
+                hsh_occasion["next_occasion_date"] = formatted_occasion_date.strftime('%d/%m/%Y')
                 hsh_occasion["message"] = "Congrats! It is a happy day today"
 
             return True

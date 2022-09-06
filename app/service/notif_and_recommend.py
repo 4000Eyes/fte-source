@@ -13,6 +13,7 @@ class NotificationAndRecommendation(Resource):
         try:
             request_id = request.args.get("request_id", type=int)
             user_id = request.args.get("user_id", type=str)
+            country_code = request.args.get("country_code", type=str)
             phone_number = request.args.get("phone_number", type=str)
             message_id = request.args.get("message_id", type=str)
             obj_notification = NotificationAndRecommendationDB()
@@ -90,7 +91,10 @@ class NotificationAndRecommendation(Resource):
 
                 contributor_approval_output = []
 
-                if not objFriend.get_open_invites(user_id,phone_number, contributor_approval_output):
+                if country_code is None or \
+                    phone_number is None:
+                    return {"Error": "Phone number and country code are important"}, 400
+                if not objFriend.get_open_invites(country_code,phone_number, contributor_approval_output):
                     return {"Error" : "Failure: Unable to get the list of open contributor approvals"}, 400
                 list_data.append({"contributor_invites" : contributor_approval_output})
 
@@ -108,21 +112,30 @@ class NotificationAndRecommendation(Resource):
                 if not obj_gdb.get_occasion_by_user(user_id, list_output):
                     return {"Error": "Error in getting the occasion approval data"}, 200
                 final_output.append({"occasions":list_output})
-
-
                 contributor_approval_output = []
                 objFriend = FriendListDB()
-                if not objFriend.get_open_invites(user_id, phone_number, contributor_approval_output):
+                if country_code is None or \
+                    phone_number is None:
+                    return {"Error": "Phone number and country code are important"}, 400
+                if not objFriend.get_open_invites(country_code, phone_number, contributor_approval_output):
                     return {"Error" : "Failure: Unable to get the list of open contributor approvals"}, 400
                 final_output.append({"contributor_invites" : contributor_approval_output})
 
                 approval_output = []
                 if not obj_notification.get_approval_requests(user_id, approval_output):
                     return {"Error": "Failure: Unable to get approval data"}, 400
-                if len(list_output) > 0:
-                    final_output.append({"approval": approval_output})
+
+                final_output.append({"contributor_approval": approval_output})
+
+                list_unapproved_occasions = []
+
+                if not obj_gdb.get_unapproved_occasions(user_id, l_friend_circle, list_unapproved_occasions):
+                    return {"Error": "Error in getting the occasion approval data"}, 200
+
+                final_output.append({"unapproved_occasions": list_unapproved_occasions})
 
                 return {"data": json.loads(json.dumps(final_output))}, 200
+
             if request_id == 3: # Get the interest data only
                 pass
             if request_id == 4: # Get the relationship data only

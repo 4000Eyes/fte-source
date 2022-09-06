@@ -7,7 +7,7 @@ sys.path.insert(0,'/app/service')
 sys.path.insert(0,'/app/model')
 """
 from datetime import datetime as dt
-from werkzeug.local import LocalProxy
+#from werkzeug.local import LocalProxy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
 from flask_restful import Api
@@ -26,7 +26,7 @@ api = Api()
 dbx = MongoEngine()
 cloud_mongodb = PyMongo()
 
-BROKER_URL = 'redis://krisraman:Gundan123@@redis-10913.c1.us-east1-2.gce.cloud.redislabs.com:10913/0'
+BROKER_URL = 'amqps://cjbcxstm:GLjRO0l4x0GGtZP3TRdtQ7pKARuFp0F4@albatross.rmq.cloudamqp.com/cjbcxstm'
 BACKEND_URL = 'redis://krisraman:Gundan123@@redis-10913.c1.us-east1-2.gce.cloud.redislabs.com:10913/0'
 def create_app(config_name: str):
     """Main app factory, runs all the other sections"""

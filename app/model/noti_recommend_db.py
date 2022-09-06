@@ -9,6 +9,7 @@ from flask_restful import Resource
 import pymongo.collection
 from datetime import datetime
 from pymongo import errors
+from collections import  defaultdict
 from app.model.gdbmethods import GDBUser
 
 
@@ -278,9 +279,33 @@ class NotificationAndRecommendationDB(Resource):
     def get_approval_requests(self, user_id, loutput):
         try:
             product_collection = pymongo.collection.Collection(g.db, "approval_queue")
-            result = product_collection.find({"approval_status": "N"})
+            result = product_collection.find({"$and":[{"approved_flag": 0},
+                                                      {"referrer_user_id": user_id}]})
+            hshoutput = {}
+            l_friend_circle_ids = []
+            l_friend_circle_headers = []
+            objGDBUser = GDBUser()
             for row in result:
-                loutput.append(row)
+                hshoutput = defaultdict()
+                hshoutput["referrer_user_id"] = row["referrer_user_id"]
+                hshoutput["referred_user_id"] = row["referred_user_id"]
+                hshoutput["friend_circle_id"] = row["friend_circle_id"]
+                hshoutput["country_code"] = row["country_code"]
+                hshoutput["phone_number"] = row["phone_number"]
+                hshoutput["first_name"] = row["first_name"]
+                hshoutput["last_name"] = row["last_name"]
+                hshoutput["email_address"] = row["email_address"]
+                print ("The referred user id ", row["referred_user_id"])
+                if not objGDBUser.get_friend_circle_header([row["friend_circle_id"]], l_friend_circle_headers):
+                    current_app.logger.error("Unable to get friend circle data")
+                    return False
+                if len(l_friend_circle_headers) > 0:
+                    hshoutput.update(l_friend_circle_headers.pop())
+                loutput.append(hshoutput)
+
+
+
+
             return True
         except Exception as e:
             return False
@@ -292,6 +317,7 @@ class NotificationAndRecommendationDB(Resource):
             for record in result:
                 pay_load = record["pay_load"]
                 pay_load.update({"type_id": record["type_id"]})
+                pay_load.update({"message_type": record["message_type"] if "message_type" in record else None})
                 list_data.append(pay_load)
             return True
         except Exception as e:

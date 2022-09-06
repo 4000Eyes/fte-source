@@ -39,20 +39,22 @@ class ManageFriendCircle(Resource):
 
 
             user_info = {}
-            user_info["admin_friend_id"] =  content["admin_friend_id"] if "admin_friend_id" in content else None
-            user_info["referred_user_id"] =  content["referred_user_id"] if "referred_user_id" in content else None
-            user_info["referrer_user_id"] =    content["referrer_user_id"] if "referrer_user_id" in content else None
-            user_info["friend_circle_id"] =  content["friend_circle_id"] if "friend_circle_id" in content else None
-            user_info["phone_number"] =  content["phone_number"] if "phone_number" in content else None
+            user_info["admin_friend_id"] =content["admin_friend_id"] if "admin_friend_id" in content else None
+            user_info["referred_user_id"] =content["referred_user_id"] if "referred_user_id" in content else None
+            user_info["referrer_user_id"] =content["referrer_user_id"] if "referrer_user_id" in content else None
+            user_info["friend_circle_id"] =content["friend_circle_id"] if "friend_circle_id" in content else None
+            user_info["country_code"] = content["country_code"] if "country_code" in content else None
+            user_info["phone_number"] =content["phone_number"] if "phone_number" in content else None
             user_info["first_name"] = content["first_name"] if "first_name" in content else None
-            user_info["last_name"] =  content["last_name"] if "last_name" in content else None
-            user_info["email_address"]  =  content["email_address"] if "email_address" in content else None
+            user_info["last_name"] =content["last_name"] if "last_name" in content else None
+            user_info["email_address"]=content["email_address"] if "email_address" in content else None
             user_info["gender"]= content["gender"] if "gender" in content else None
             user_info["location"] = content["location"] if "location" in content else None
             user_info["friend_circle_name"] = content["friend_circle_name"] if "friend_circle_name" in content else None
             user_info["list_friend_circle_id"] = content["list_friend_circle_id"] if "list_friend_circle_id" in content else None
             user_info["group_name"] = content["group_name"] if "group_name" in content else None
-            user_info["approval_status"] = content["signal"] if "signal" in content else None
+            user_info["approval_status"] = content["approval_status"] if "approval_status" in content else None
+            user_info["approval_flag"] = content["approval_flag"] if "approval_flag" in content else None
             user_info["image_url"] = content["image_url"] if "image_url" in content else None
             user_info["age"] = content["age"] if "age" in content else None
 
@@ -80,6 +82,7 @@ class ManageFriendCircle(Resource):
                     user_info["last_name"] = output["last_name"]
                     user_info["email_address"] = output["email_address"]
                     user_info["location"] = output["location"]
+                    user_info["country_code"] = output["country_code"]
                     user_info["phone_number"] = output["phone_number"]
                     user_info["gender"] = output["gender"]
                     user_info["friend_list_flag"] = "N"
@@ -95,6 +98,7 @@ class ManageFriendCircle(Resource):
                         user_info["last_name"] = output["last_name"]
                         user_info["email_address"] = output["email_address"]
                         user_info["location"] = output["location"]
+                        user_info["country_code"] = output["country_code"]
                         user_info["phone_number"] = output["phone_number"]
                         user_info["linked_status"] = output["linked_status"]
                         user_info["linked_user_id"] = output["linked_user_id"]
@@ -111,6 +115,7 @@ class ManageFriendCircle(Resource):
                         user_info["last_name"] = output["last_name"]
                         user_info["email_address"] = output["email_address"]
                         user_info["location"] = output["location"]
+                        user_info["country_code"] = output["country_code"]
                         user_info["phone_number"] = output["phone_number"]
                         user_info["linked_status"] = output["linked_status"]
                         user_info["linked_user_id"] = output["linked_user_id"]
@@ -156,10 +161,11 @@ class ManageFriendCircle(Resource):
                         user_info.update({"info_type": "E: User Acceptance Required"})
                     else:
                         user_info.update({"info_type": "E: Approval Required"})
+                    """
                     kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
                                                           current_app.config["KAFKA_FRIEND_EMAIL_TOPIC"])
                     kafka_producer.send_msg(json.dumps(user_info))
-
+                    """
                 if is_admin == 1:
                     current_app.logger.error("Reffered friend is successfully added" + user_info["referred_user_id"])
                 else:
@@ -176,18 +182,20 @@ class ManageFriendCircle(Resource):
                 hshOutput = {}
                 friend_record_exists = 0
                 referred_user_id = None
-
-                if not objGDBUser.get_user_role_as_contrib_secret_friend(user_info["phone_number"], user_info["referrer_user_id"], user_info["friend_circle_id"], hshOutput):
+                if "country_code" not in user_info or \
+                    "phone_number" not in user_info:
+                    return {"Error": "Phone number and/or country code is missing"}, 400
+                if not objGDBUser.get_user_role_as_contrib_secret_friend(user_info["country_code"], user_info["phone_number"], user_info["referrer_user_id"], user_info["friend_circle_id"], hshOutput):
                     current_app.logger.error("Unable to get the roles for " + user_info["email_address"])
                     return {"Error" : "Unable to check the roles of the user"}, 400
                 if user_info["phone_number"] in hshOutput:
-                    if hshOutput[user_info["phone_number"]]["contrib_flag"] == "Y":
+                    if hshOutput[str(user_info["country_code"])+str(user_info["phone_number"])]["contrib_flag"] == "Y":
                         return {"status": "User is already a contributor to the friend circle "}, 400
-                    if hshOutput[user_info["phone_number"]]["secret_friend_flag"] == "Y":
+                    if hshOutput[str(user_info["country_code"])+str(user_info["phone_number"])]["secret_friend_flag"] == "Y":
                         return {"status": " recommended user is the secret friend "}, 400
-                    if hshOutput[user_info["phone_number"]]["circle_creator_flag"] == "Y":
+                    if hshOutput[str(user_info["country_code"])+str(user_info["phone_number"])]["circle_creator_flag"] == "Y":
                         return {"status": " creator cannot be the contributor "}, 400
-                    if hshOutput[user_info["phone_number"]]["user_id"] is not None and hshOutput[user_info["phone_number"]]["friend_id"] is not None:
+                    if hshOutput[str(user_info["country_code"])+str(user_info["phone_number"])]["user_id"] is not None and hshOutput[user_info["phone_number"]]["friend_id"] is not None:
                         friend_record_exists = 1
                         referred_user_id = hshOutput[user_info["phone_number"]]["user_id"]
 
@@ -211,7 +219,7 @@ class ManageFriendCircle(Resource):
                 if hshOutput[user_info["referrer_user_id"]]["circle_creator_flag"] == "Y":
                     is_admin = 1
 
-                if not objGDBUser.get_user_by_phone(user_info["phone_number"], output):
+                if not objGDBUser.get_user_by_phone(user_info["phone_number"], user_info["country_code"], output):
                     current_app.logger.error("Error in checking the user table for id",
                                              user_info["referred_user_id"])
                     return {"Error": "Failure in accessing the user table for " + user_info[
@@ -220,9 +228,8 @@ class ManageFriendCircle(Resource):
                 user_info["friend_list_flag"] = "N"
 
                 if output.get("user_id") is not None:
-                    if ( is_admin == 1 or hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "Y") and output.get("user_id") == user_info["referrer_user_id"]:
+                    if (is_admin == 1 or hshOutput[user_info["referrer_user_id"]]["contrib_flag"] == "Y") and output.get("user_id") == user_info["referrer_user_id"]:
                         return {"Error": "creator or contributor cannot be the contributor"}, 400
-                    user_info["referred_user_id"] = output.get("user_id")
                     user_info["linked_status"] = 1
                     user_info["linked_user_id"] = output.get("user_id")
                     user_info["referred_user_id"] = output.get("user_id")
@@ -233,16 +240,15 @@ class ManageFriendCircle(Resource):
                     user_info["approval_status"] = 0
                     #if not objFriend.get_friend_by_email(user_info["email_address"], user_info["referrer_user_id"], "DIRECT", output): # phone primary key support
 
-                    if not objFriend.get_friend_by_phone_number(user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
+                    if not objFriend.get_friend_by_phone_number(user_info["country_code"], user_info["phone_number"], user_info["referrer_user_id"], "DIRECT", output):
                         current_app.logger.error("Unable to check the presence of record for user " + user_info["email_address"])
                         return {"Error": "Unable to check the presence of user record in the db"}, 400
                     if "referred_user_id" in output and output["referred_user_id"] is not None:
-                        user_info["referred_user_id"] = output["user_id"]
+                        user_info["referred_user_id"] = output["referred_user_id"]
                         user_info["linked_status"] = output["linked_status"]
                         user_info["linked_user_id"] = output["linked_user_id"]
                         user_info["friend_list_flag"] = "Y"
                         user_info["approval_status"] = 0
-                        user_info["referrer_user_id"] = output["user_id"]
                     else:
                         user_info["linked_status"] = 0
                         user_info["linked_user_id"] = None
@@ -257,10 +263,11 @@ class ManageFriendCircle(Resource):
                         user_info.update({"info_type": "NE: User Acceptance Required"})
                     else:
                         user_info.update({"info_type": "NE: Approval Required"})
+                    """
                     kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
                                                           current_app.config["KAFKA_FRIEND_EMAIL_TOPIC"])
                     kafka_producer.send_msg(json.dumps(user_info))
-
+                    """
                 if is_admin:
                     return {"Status": "User added. They need to accept the invite and join"}, 200
                 else:
@@ -280,17 +287,22 @@ class ManageFriendCircle(Resource):
 
                 user_info.update({"info_type": "SF: Secret Friend For Search"})
                 if int(os.environ.get("GEMIFT_VERSION")) == 2:
+                    print ("i am going silent for now")
+                    """
                     kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
                                                           current_app.config["KAFKA_SECRET_FRIEND_QUEUE"])
                     kafka_producer.send_msg(json.dumps(user_info))
+                    """
                 return {"status" : json.loads(json.dumps(output))}, 200
             if request_id == 4:
                 #if user_info["email_address"] is None or user_info["referrer_user_id"] is None: #phone primary key support
-                if user_info["phone_number"] is None or user_info["referrer_user_id"] is None:
-                    return {"Error" : "Failure. phone number and/or referrer user id cannot be null"}
+                if user_info["phone_number"] is None or\
+                        user_info["country_code"] is None or \
+                        user_info["referrer_user_id"] is None:
+                    return {"Error" : "Failure. phone number and/or referrer user id cannot be null"}, 400
 
 
-                if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_phone(user_info["referrer_user_id"],user_info["phone_number"], output):
+                if objGDBUser.check_friend_circle_with_admin_and_secret_friend_by_phone(user_info["referrer_user_id"],user_info["country_code"],user_info["phone_number"], output):
                     if output.get("user_exists") is not None and int(output.get("user_exists")) > 0:
                         return {"Error" : "secret circle for this email exists"}, 400
                 output = {}
@@ -302,9 +314,11 @@ class ManageFriendCircle(Resource):
                     return {"Error" : "Failure. Unable to create friend circle"}, 401
 
                 if int(os.environ.get("GEMIFT_VERSION")) == 2:
+                    """
                     kafka_producer = KafkaMessageProducer(current_app.config["KAFKA_BROKER"],
                                                           current_app.config["KAFKA_SECRET_FRIEND_QUEUE"])
                     kafka_producer.send_msg(json.dumps(user_info))
+                    """
             if request_id == 5: # this is for whatsapp integration
                 print ("The user list is ", user_list)
                 objFriendCircleHelper = FriendCircleHelper()
@@ -317,17 +331,24 @@ class ManageFriendCircle(Resource):
                 if user_info["referrer_user_id"] is None or user_info["referred_user_id"] is None or user_info["list_friend_circle_id"] is None:
                     current_app.logger.error("One or more equired parameters for request id 6 is missing. The required parameters are referrer_id, referred_id and an array of friend cricle id")
                     return {"Error" : "Unable to continue. Required parameters are missing"}, 400
-                if not objFriend.approve_requests(user_info["referrer_user_id"], user_info["referred_user_id"], user_info["list_friend_circle_id"], loutput):
+                if not objFriend.approve_requests(user_info["referrer_user_id"],
+                                                  user_info["referred_user_id"],
+                                                  user_info["list_friend_circle_id"],
+                                                  user_info["approval_flag"],
+                                                  loutput):
                     return {"status": "Failure"}, 400
 
                 return {"status": "success"}, 200
             if request_id == 7: # contributor accepting to join the friend circle
-                if user_info["friend_circle_id"] is None or user_info["phone_number"] is None:
+                if user_info["friend_circle_id"] is None or \
+                        user_info["phone_number"] is None or \
+                        user_info["country_code"] is None :
                     current_app.logger.error("The required parameters for this requests are missing")
                     return {"Error" : "Failure: Unable to complete the operation"},400
                 if not objFriend.contributor_approval(user_info["friend_circle_id"],
                                                       user_info["referred_user_id"],
                                                       user_info["referrer_user_id"],
+                                                      user_info["country_code"],
                                                       user_info["phone_number"],
                                                       user_info["approval_status"]):
                     current_app.logger.error("Unable to process the approval request")
@@ -371,6 +392,22 @@ class ManageFriendCircle(Resource):
         friend_circle_id = request.args.get("friend_circle_id", type=str)
         request_id = request.args.get("request_id", type=int)
         phone_number = request.args.get("phone_number", type=str)
+        country_code = request.args.get("country_code", type=str)
+
+        sstr = "("
+        is_weird = 0
+        list_friend_circle_raw = request.args.getlist("list_friend_circle")
+        list_friend_circle_ids = None
+        for occ in list_friend_circle_raw:
+            if str(occ).find(sstr) >= 0:
+                occ = occ.replace('(', " ")
+                occ = occ.replace(')', " ")
+                occ = occ.replace('"', " ")
+                occ = occ.replace(" ", "")
+                list_friend_circle_ids = list(occ.split(","))
+                is_weird = 1
+        if not is_weird:
+            list_friend_circle_ids = list_friend_circle_raw
         if request_id is None:
             return {"Error": "Failure. No request id present in the request"}, 400
         output = []
@@ -379,6 +416,7 @@ class ManageFriendCircle(Resource):
         # request == 1 :Get friend circle data by friend circle id
         # request == 2: Get all friend circle data for a given user
         # request == 3 : Get all your friends from the friend list
+        # request = 5 : just get the friend circle information
 
         if request_id == 1:
             # Get specific friend circle data
@@ -395,7 +433,6 @@ class ManageFriendCircle(Resource):
             #if not objGDBUser.get_friend_circles(user_id, output):
                 print('There is an issue getting friend_circle_data for ', user_id)
                 return {"Error": "unable to get friend circle information. retry"}, 400
-
             return {'data': json.loads(json.dumps(list_output))}, 200
 
         if request_id == 3:
@@ -403,16 +440,26 @@ class ManageFriendCircle(Resource):
             if not objFriend.get_friend_list(user_id, output):
                 print('There is an issue getting friend_circle_data for ', user_id)
                 return {"Error": "unable to get friend circle information. retry"}, 400
-            data = json.dumps(output)
+            data = json.loads(json.dumps(output))
             return {'friend_list: data'}, 200
 
         if request_id == 4: # to get all the friend circle invite where the user hasn't approved
             objFriend = FriendListDB()
             list_output = []
-            if objFriend.get_open_invites(phone_number, list_output):
+            if country_code is None or phone_number is None:
+                return {"Error": "Phone number or country code is null"}, 400
+
+            if objFriend.get_open_invites(country_code, phone_number, list_output):
                 current_app.logger.error("Unable to get all the open invites")
                 return {"Error" : "Failure to get all the open invites"}, 400
-            return{"invite" : json.dumps(list_output)}, 200
+            return{"invite" : json.loads(json.dumps(list_output))}, 200
+
+        if request_id == 5: # to get all the friend circle head data
+            list_output = []
+            if not objGDBUser.get_friend_circle_header(list_friend_circle_ids, list_output):
+                current_app.logger.error("Unable to get friend circle header information")
+                return {"Error" : "Failure to get friend circle information"}, 400
+            return{"data" : json.loads(json.dumps(list_output))}, 200
 
     def delete(self):
         return {"Item successfully deleted": "thank you"}, 200
@@ -704,7 +751,7 @@ class OccasionManagement(Resource):
         friend_circle_id = content["friend_circle_id"] if "friend_circle_id" in content else None
         occasion_id = content["occasion_id"] if "occasion_id" in content else None
         status = content["status"] if "status" in content else None
-        contributor_user_id = content["contributor_user_id"] if "contributor_user_id" in content else None
+        user_id = content["user_id"] if "user_id" in content else None
         occasion_date = content["occasion_date"] if "occasion_date" in content else None
         occasion_timezone = content["occasion_timezone"] if "occasion_timezone" in content else None
         flag = content["flag"] if "flag" in content else None
@@ -764,6 +811,17 @@ class OccasionManagement(Resource):
             if not objGDBUser.reactivate_occasion(occasion_id, friend_circle_id):
                 return {"Error": "Failure: occasion not re-activated"}, 400
             return {"status": "Successfully deactivated"}, 200
+
+        if request_id == 7: #Edit occasion
+            if user_id is None or \
+                    occasion_id is None or \
+                    friend_circle_id is None or \
+                    occasion_date is None or \
+                    occasion_timezone is None:
+                return {"Error" : "Required parameters to edit occasion is missing"}, 400
+            if not objGDBUser.edit_occasion(user_id,friend_circle_id,occasion_id,occasion_date, occasion_timezone):
+                return {"Error": "Edit the occasion is unsuccessful"}, 400
+            return {"status": "Successfully updated"}, 200
 
     @jwt_required()
     def update(self):
