@@ -1,3 +1,5 @@
+import operator
+
 import pymongo
 import neo4j.exceptions
 import pymongo.collection
@@ -56,64 +58,6 @@ class SearchDB:
         self.__uid = str(uuid.uuid4())
         return self.__uid
 
-    def search_by_subcategory(self, inputs, output_list):
-        # occasion names should be a list
-        try:
-            # list_subcategory = "'%s'" % "','".join(inputs["subcategory"])
-
-            datefilter = None
-            datefilter = '2021-02-01T00:00:00.000Z'
-            myDatetime = dateutil.parser.parse(datefilter)
-            sort_order = None
-            if inputs["sort_order"] == "ASC":
-                sort_order = 1
-            else:
-                sort_order = -1
-            """
-
-            search_string = " {$search: {'index': '%s' " \
-                            "'compound': { 'must': [ { 'text': { 'query': ['%s'], 'path': 'occasion' } }," \
-                            "{ 'compound': { 'filter': [ {  { 'range': { 'gte': %d, 'path': 'age_lo' } } ," \
-                            "{'range':{'gte':%d, 'path':'age_hi'}}," \
-                            "{'range':{'path':'created_dt', 'gte':ISODate('2021-02-01T00:00:00.000Z')}}] } } ] } } } ," \
-                            "  {$sort:{age_lo:-1, created_dt: -1}}])" % (self.get_index(), occasion_names, age_floor, age_ceiling)
-            """
-            result = None
-            test = "prod_index"
-            gemift_coll = "gemift_product_db"
-            user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
-            result = user_collection.aggregate([{"$search": {"index": self.get_index(),
-                                                             "compound": {
-                                                                 "must": [{"text": {"query": [inputs["subcategory"]],
-                                                                                    "path": "subcategory"}},
-                                                                          {"compound": {"filter": [
-                                                                              {"range": {"gte": inputs["age_floor"],
-                                                                                         "path": "age_lo"}},
-                                                                              {"range": {"gte": inputs["age_ceiling"],
-                                                                                         "path": "age_hi"}},
-                                                                              {'range': {'path': 'created_dt',
-                                                                                         'gt': myDatetime}}
-                                                                          ]}}
-                                                                          ]}}},
-                                                {"$sort": {"created_dt": -1, "price": sort_order}}])
-            if result is not None:
-                for doc in result:
-                    print("The doc is ", doc)
-                    output_list.append(doc)
-                print("The result is ", len(output_list), output_list)
-                return True
-            else:
-                print("No output")
-            return True
-        except errors.PyMongoError as e:
-            current_app.logger.error(e)
-            print("The error is ", e)
-            return False
-        except Exception as e:
-            current_app.logger.error(e)
-            print("The generic exception is ", e)
-            return False
-
     def search_gemift_products(self, inputs, output_list):
         # occasion names should be a list
         try:
@@ -152,15 +96,17 @@ class SearchDB:
                 #range_string =  {"range": {"gte": inputs["age_floor"],"path": "age_lo"}}
                 age_floor_hash = {}
                 age_floor_hash["range"] = {}
-                age_floor_hash["range"]["lte"] = int(inputs["age"])
                 age_floor_hash["range"]["path"] = "age_lo"
+                age_floor_hash["range"]["lte"] = int(inputs["age"])
+
 
             if "age" in inputs:
                 #celing = {"range": {"gte": inputs["age_ceiling"],"path": "age_hi"}}
                 age_ceiling_hash = {}
                 age_ceiling_hash["range"] = {}
-                age_ceiling_hash["range"]["gte"] = int(inputs["age"])
                 age_ceiling_hash["range"]["path"] = "age_hi"
+                age_ceiling_hash["range"]["gte"] = int(inputs["age"])
+
 
             #{'range': {'path': 'created_dt','gt': myDatetime}}
 
@@ -216,12 +162,13 @@ class SearchDB:
                 subcategory_hash["text"]["query"] = inputs["subcategory"]
                 subcategory_hash["text"]["path"] = "interest"
                 if occasion_flag == 1 or category_flag == 1:
+                    print ("I am inside subcategory hash")
                     final_filter_list.append(subcategory_hash)
                 else:
                     must_class_hash = subcategory_hash
             if len(must_class_hash) <= 0:
                 current_app.logger.error("The must class cannot be empty")
-                return False
+                return 2
 
             search_string = {"$search": {"index": self.get_index(),
                                                              "compound": {"must": [
@@ -230,11 +177,17 @@ class SearchDB:
                                                                  }}
                                                                  ]}}
                              }
+
+
             sort_string = {"$sort": { "price": sort_order }}
-            skip_string = {"$skip": inputs["page_size"]}
-            limit_string = {"$limit": inputs["page_number"]}
+
+            skip_size = inputs["page_size"] * (inputs["page_number"] -1 )
+            skip_string = {"$skip": skip_size}
+            limit_string = {"$limit": inputs["page_size"]}
+
             pipeline = [search_string, sort_string, skip_string, limit_string]
             print ("The pipeline query is", pipeline)
+
             user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
             result = user_collection.aggregate(pipeline)
 
@@ -255,26 +208,78 @@ class SearchDB:
             """
             if result is not None:
                 for doc in result:
-                    print("The doc is ", doc)
+                    print("The doc is ", doc["interest"], doc["age_lo"], doc["age_hi"])
                     output_list.append(doc)
-                print("The result is ", len(output_list), output_list)
-                return True
+                return 1
             else:
                 print("No output")
-            return True
+            return 1
 
         except errors.PyMongoError as e:
             current_app.logger.error(e)
             print("The error is ", e)
-            return False
+            return -1
 
         except Exception as e:
             current_app.logger.error(e)
             print("The generic exception is ", e)
-            return False
+            return -1
 
 
+    def get_categories(self, inputs, output_list):
+        try:
+            if "occasion" in inputs and len(inputs["occasion"]) > 0:
+                occasions_hash = {}
+                occasions_hash["text"] = {}
+                occasions_hash["text"]["query"] = inputs["occasion"]
+                occasions_hash["text"]["path"] = "occasion_id"
+                occasion_flag = 1
 
+
+            final_filter_list = []
+            if 'gender' in inputs and inputs["gender"] is not None and len(inputs["gender"]) > 0:
+                gender_hash = {}
+                gender_hash["text"] = {}
+                gender_hash["text"]["query"] = inputs["gender"]
+                gender_hash["text"]["path"] = "gender"
+                final_filter_list.append(gender_hash)
+            if len(occasions_hash) <= 0:
+                current_app.logger.error("The must class cannot be empty")
+                return 2
+
+            search_string = {"$search": {"index": self.get_index(),
+                                                             "compound": {"must": [
+                                                                 occasions_hash,
+                                                                 {"compound": {"filter":  final_filter_list
+                                                                 }}
+                                                                 ]}}
+                             }
+
+
+            group_string = { "$group" : { "_id" : "$category" } }
+            pipeline = [search_string,group_string]
+            print ("The pipeline query is", pipeline)
+
+            user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
+            result = user_collection.aggregate(pipeline)
+            if result is not None:
+                for doc in result:
+                    print("The doc is ", doc["_id"])
+                    output_list.append(doc)
+                return 1
+            else:
+                print("No output")
+            return 1
+
+        except errors.PyMongoError as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return -1
+
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The generic exception is ", e)
+            return -1
     def get_product_detail(self, inputs, output_list):
         try:
             user_collection = pymongo.collection.Collection(g.db, self.get_search_collection())
@@ -293,6 +298,47 @@ class SearchDB:
             print("The error is ", e)
             return False
 
+    def vote_recommended_product(self, inputs):
+        try:
+            driver = NeoDB.get_session()
+            product_recommendation_vote_query = "MATCH (pc:product_occasion{product_id:$product_id_," \
+                                    "occasion_id:$occasion_id_," \
+                                    "friend_circle_id:$friend_circle_id_," \
+                                    "occasion_year:$occasion_year_}), (u:User{user_id:$user_id_})" \
+                                   " MERGE (pc)<-[r:VOTE_RECOMMENDED_PRODUCT]-(u) " \
+                                   " ON CREATE set r.vote=$vote_," \
+                                    "r.created_dt = $created_dt_," \
+                                    "r.comment = $comment_" \
+                                    " ON MATCH " \
+                                    "set r.vote=$vote_," \
+                                    "r.created_dt = $created_dt_," \
+                                    "r.comment = $comment_" \
+                                    " RETURN pc.product_id as product_id"
+            resultX = driver.run(product_recommendation_vote_query, user_id_=inputs["user_id"],
+                              product_id_=inputs["product_id"],
+                              vote_=inputs["vote"],
+                                friend_circle_id_=inputs["friend_circle_id"],
+                              occasion_id_ = inputs["occasion_id"],
+                              comment_=inputs["comment"],
+                                occasion_year_= str(inputs["occasion_year"]),
+                                created_dt_ = self.get_datetime(),
+                              updated_dt_ = self.get_datetime())
+
+            counter = 0
+            for record in resultX:
+                print("The record is ", record["product_id"])
+                counter = 1
+            print("The  query is ", resultX.consume().query)
+            print("The  parameters is ", resultX.consume().parameters)
+            if counter ==0:
+                current_app.logger.error("Relationship between the user and product is not created " + inputs["user_id"] )
+                return False
+
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            return False
+
     def vote_product(self, inputs):
         try:
             driver = NeoDB.get_session()
@@ -306,7 +352,7 @@ class SearchDB:
                               price_ = inputs["price"],
                               created_dt_ = self.get_datetime())
 
-            b_product_flga = 0
+            b_product_flag = 0
             for row in presult:
                 b_product_flag = 1
 
@@ -315,25 +361,34 @@ class SearchDB:
                 current_app.logger.error("Unable to insert or update the product")
                 return False
 
+            final_query = "MERGE (pc:product_occasion{product_id:$product_id_," \
+                    "occasion_id:$occasion_id_," \
+                    "friend_circle_id:$friend_circle_id_," \
+                    "occasion_year:$occasion_year_}) " \
+                    " ON MATCH SET pc.occasion_name = $occasion_name_ , pc.created_dt = $created_dt_ " \
+                    " ON CREATE SET pc.occasion_name = $occasion_name_, pc.updated_dt = $updated_dt_ " \
+                    " with pc " \
+                    "  MATCH (u:User{user_id:$user_id_}) ," \
+                    " (p:product{product_id:$product_id_})" \
+                    " MERGE (u)-[r:VOTE_PRODUCT]->(pc)-[:PRODUCT]->(p) " \
+                          " ON CREATE set r.vote = $vote_, r.comment = $comment_, r.created_dt = $created_dt_" \
+                          " ON MATCH set  r.vote = $vote_, r.comment = $comment_, r.updated_dt = $updated_dt_ " \
+                    " return pc.occasion_id, pc.friend_circle_id, u.user_id as user_id"
 
-            query = "MATCH (b:product{product_id:$product_id_}) ," \
-                    " (a:User{user_id:$user_id_}) " \
-                    " MERGE (a)-[r:VOTE_PRODUCT]->(b) " \
-                    " ON MATCH " \
-                    " SET r.value = $vote_, r.comment = $comment_, r.updated_dt = $updated_dt_ " \
-                    " ON CREATE " \
-                    " SET r.value = $vote_, r.comment = $comment_, r.created_dt = $created_dt_, r.occasion_name=$occasion_name_, " \
-                    " r.friend_circle_id = $friend_circle_id_, r.occasion_year = $occasion_year_" \
-                    " RETURN b.product_id, a.user_id"
-
-            resultX = txn.run(query, user_id_=inputs["user_id"], product_id_=inputs["product_id"], vote_=inputs["vote"],
-                                friend_circle_id_=inputs["friend_circle_id"], comment_=inputs["comment"],
-                                occasion_name_=inputs["occasion_name"], occasion_year_=inputs["occasion_year"],
-                                created_dt_ = self.get_datetime(), updated_dt_ = self.get_datetime())
+            resultX = txn.run(final_query, user_id_=inputs["user_id"],
+                              product_id_=inputs["product_id"],
+                              vote_=inputs["vote"],
+                                friend_circle_id_=inputs["friend_circle_id"],
+                              occasion_id_ = inputs["occasion_id"],
+                              occasion_name_ = inputs["occasion_name"],
+                               comment_=inputs["comment"],
+                                 occasion_year_= str(inputs["occasion_year"]),
+                                created_dt_ = self.get_datetime(),
+                              updated_dt_ = self.get_datetime())
 
             counter = 0
             for record in resultX:
-                print("The record is ", record["a.user_id"])
+                print("The record is ", record["user_id"])
                 counter = 1
             print("The  query is ", resultX.consume().query)
             print("The  parameters is ", resultX.consume().parameters)
@@ -349,18 +404,19 @@ class SearchDB:
             txn.rollback()
             return False
 
+
     def get_voted_product_count(self, friend_circle_id, occasion_name, occasion_year, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:VOTE_PRODUCT]->(f:product) " \
-                    " WHERE r.friend_circle_id = $friend_circle_id_" \
-                    " AND r.occasion_year = $occasion_year_ " \
-                    " AND r.occasion_name = $occasion_name_" \
-                    " RETURN coalesce(count(f.product_id),0) as total_product"
+            query = "MATCH (a:User)-[r:VOTE_PRODUCT]->(po:product_occasion)-[:PRODUCT]->(f:product) " \
+                    " WHERE po.friend_circle_id = $friend_circle_id_" \
+                    " AND po.occasion_year = $occasion_year_ " \
+                    " AND po.occasion_name = $occasion_name_" \
+                    " RETURN coalesce(count(distinct f.product_id),0) as total_product"
 
             result = driver.run(query, friend_circle_id_=friend_circle_id,
                                 occasion_name_=occasion_name,
-                                occasion_year_=occasion_year)
+                                occasion_year_=str(occasion_year))
             #I have to make changes to move away from occasion name to id soon
 
             for record in result:
@@ -378,22 +434,81 @@ class SearchDB:
             print("The error is ", e)
             return False
 
-    def get_voted_products(self, inputs, loutput):
+    def get_recommended_product_vote_count(self, friend_circle_id, occasion_id, occasion_year, loutput, hshoutput = None):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:User)-[r:VOTE_PRODUCT]->(f:product) " \
-                    " WHERE r.friend_circle_id = $friend_circle_id_" \
-                    " AND r.occasion_year = $occasion_year_ " \
-                    " AND r.occasion_name = $occasion_name_" \
-                    " RETURN count(a.user_id) as total_users, r.vote as vote, f.product_id as product_id, " \
-                    " f.product_title as product_title, f.price as price"
-            result = driver.run(query, friend_circle_id_=inputs["friend_circle_id"],
-                                occasion_name_=inputs["occasion_name"],
-                                occasion_year_=inputs["occasion_year"])
+            query = "MATCH (pc:product_occasion{" \
+                                    "occasion_id:$occasion_id_," \
+                                    "friend_circle_id:$friend_circle_id_," \
+                                    "occasion_year:$occasion_year_})" \
+                                    "<-[r:VOTE_RECOMMENDED_PRODUCT]-(u:User)" \
+                                    " return " \
+                                    " sum(case when r.vote < 0 then 1 end ) as down_vote, " \
+                                    " sum(case when  r.vote > 0 then 1  end ) as up_vote, " \
+                                    " pc.product_id as product_id," \
+                                    " pc.friend_circle_id as friend_circle_id, " \
+                                    " pc.occasion_id as occasion_id, " \
+                                    " pc.occasion_year as occasion_year"
+
+            result = driver.run(query,
+                                friend_circle_id_=friend_circle_id,
+                                occasion_id_ =occasion_id,
+                                occasion_year_ = str(occasion_year))
             #I have to make changes to move away from occasion name to id soon
 
             for record in result:
+                if hshoutput is not None:
+                    hshoutput[record["product_id"]] = {"up_vote": record["up_vote"], "down_vote": record["down_vote"]}
                 loutput.append(record.data())
+
+            print("The  query is ", result.consume().query)
+            print("The  parameters is ", result.consume().parameters)
+            return True
+        except neo4j.exceptions.Neo4jError as e:
+            current_app.logger.error(e.message)
+            print("Error in executing the SQL", e.message)
+            return False
+        except Exception as e:
+            current_app.logger.error(e)
+            print("The error is ", e)
+            return False
+    def get_voted_products(self, inputs, loutput):
+        try:
+            obj_search = SearchDB()
+            l_recommend_product_count = []
+            driver = NeoDB.get_session()
+            query = "MATCH (a:User)-[r:VOTE_PRODUCT]->(f:product_occasion)-[:PRODUCT]->(p:product) " \
+                    " WHERE f.friend_circle_id = $friend_circle_id_" \
+                    " AND f.occasion_year = $occasion_year_ " \
+                    " AND f.occasion_id = $occasion_id_" \
+                    " RETURN " \
+                    " count(a.user_id) as total_users," \
+                    " f.product_id as product_id, " \
+                    " p.product_title as product_title, " \
+                    "p.price as price"
+            result = driver.run(query, friend_circle_id_=inputs["friend_circle_id"],
+                                occasion_id_=inputs["occasion_id"],
+                                occasion_year_=str(inputs["occasion_year"]))
+
+
+            hsh_voted_products = {}
+            for record in result:
+                hsh_voted_products["product_id"] = record["product_id"]
+                hsh_voted_products["total_users"] = record["total_users"]
+                hsh_voted_products["product_title"] = record["product_title"]
+                hsh_voted_products["price"] = record["price"]
+                l_recommend_product_count.clear()
+                hshOutput = {}
+                if not obj_search.get_recommended_product_vote_count(
+                        inputs["friend_circle_id"],
+                        inputs["occasion_id"],
+                        inputs["occasion_year"],
+                        l_recommend_product_count,
+                        hshOutput):
+                    current_app.logger.error("Unable to get vote for recommended products")
+                    return False
+                hsh_voted_products.update(hshOutput[record["product_id"]] if record["product_id"] in hshOutput else None)
+                loutput.append(hsh_voted_products)
             """
             if not self.get_product_comments(inputs, loutput):
                 current_app.logger.error(
@@ -419,16 +534,16 @@ class SearchDB:
     def get_product_comments(self, inputs, loutput):
         try:
             driver = NeoDB.get_session()
-            query = "MATCH (a:friend_list)-[r:VOTE_PRODUCT]->(f:product) " \
-                    " WHERE r.friend_circle_id = $friend_circle_id_" \
-                    " AND f.product_id = $product_id_" \
-                    " AND r.occasion_name = $occasion_name_" \
-                    " AND r.occasion_year = $occasion_year_ " \
+            query = "MATCH (a:friend_list)-[r:VOTE_PRODUCT]->(po:product_occasion)-[:PRODUCT]->(f:product) " \
+                    " WHERE po.friend_circle_id = $friend_circle_id_" \
+                    " AND po.product_id = $product_id_" \
+                    " AND po.occasion_name = $occasion_name_" \
+                    " AND po.occasion_year = $occasion_year_ " \
                     " RETURN a.user_id, r.comment, f.product_id"
             result = driver.run(query, friend_circle_id_=inputs["friend_circle_id"],
                                 product_id_=inputs["product_id"],
                                 occasion_name_=inputs["occasion_name"],
-                                occasion_year_=inputs["occasion_year"])
+                                occasion_year_=str(inputs["occasion_year"]))
             for record in result:
                 loutput.append(record.data())
 

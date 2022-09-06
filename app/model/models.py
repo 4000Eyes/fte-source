@@ -85,25 +85,34 @@ class UserHelperFunctions():
                 return False
             ack_hash["user_id"] = loutput["user_id"]
             ack_hash["authorized"] = self.check_password(loutput["password"], pwd)
+            ack_hash["email_address"] = loutput["email_address"]
+            ack_hash["country_code"] = loutput["country_code"]
+            ack_hash["phone_number"] = loutput["phone_number"]
+            ack_hash["first_name"] = loutput["first_name"]
+            ack_hash["last_name"] = loutput["last_name"]
+            ack_hash["gender"] = loutput["gender"]
+            ack_hash["location"] = loutput["location"]
+            ack_hash["image_url"] = loutput["image_url"] if "image_url" in loutput else None
             return True
         except Exception as e:
             current_app.logger.error(e)
             print("The error is ", e)
             return False
 
-    def validate_phone_login_gdb(self, phone_number, ack_hash):
+    def validate_phone_login_gdb(self, phone_number, country_code, ack_hash):
         try:
             objDBUser = GDBUser()
             loutput = {}
-            if not objDBUser.get_user_by_phone(phone_number, loutput):
+            if not objDBUser.get_user_by_phone(phone_number,country_code, loutput):
                 current_app.logger.error("Unable to get the user from the db for phone  " + phone_number)
                 return False
-            if loutput["user_id"] is None :
+            if "user_id" not in loutput or loutput["user_id"] is None :
                 current_app.logger.error("Unable to get the user from the db for phone " + phone_number)
                 return False
             ack_hash["user_id"] = loutput["user_id"]
             ack_hash["authorized"] = 1
             ack_hash["email_address"] = loutput["email_address"]
+            ack_hash["country_code"] = loutput["country_code"]
             ack_hash["phone_number"] = loutput["phone_number"]
             ack_hash["first_name"] = loutput["first_name"]
             ack_hash["last_name"] = loutput["last_name"]

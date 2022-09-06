@@ -7,7 +7,7 @@ sys.path.insert(0,'/app/service')
 sys.path.insert(0,'/app/model')
 """
 from datetime import datetime as dt
-from werkzeug.local import LocalProxy
+#from werkzeug.local import LocalProxy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
 from flask_restful import Api
@@ -17,6 +17,7 @@ from flask import Flask, request, g
 from app.config import config_by_name
 from app.model.extensions import NeoDB, RedisCache
 from app.service.extensions import logs
+from celery import Celery
 import pymongo
 
 flask_bcrypt = Bcrypt()
@@ -25,6 +26,8 @@ api = Api()
 dbx = MongoEngine()
 cloud_mongodb = PyMongo()
 
+BROKER_URL = 'amqps://cjbcxstm:GLjRO0l4x0GGtZP3TRdtQ7pKARuFp0F4@albatross.rmq.cloudamqp.com/cjbcxstm'
+BACKEND_URL = 'redis://krisraman:Gundan123@@redis-10913.c1.us-east1-2.gce.cloud.redislabs.com:10913/0'
 def create_app(config_name: str):
     """Main app factory, runs all the other sections"""
     app = Flask(__name__.split(".")[0])
@@ -38,8 +41,9 @@ def create_app(config_name: str):
         'username': app.config['FTEYES_USERNAME'],
         'password': app.config['FTEYES_PASSWORD']
     }
-    app.config['MONGO_URI'] = "mongodb+srv://krisraman:1RyrVRJQCBMIdG77@gemiftcluster.qwn4p.mongodb.net/sample_airbnb"
-    app.config['SECURITY_PASSWORD_SALT'] = 'Dx^&32hjeh'
+    print ("The mongo db URI is", os.environ.get("MONGO_URI"))
+    app.config['MONGO_URI'] = os.environ.get("MONGO_URI")
+    app.config['SECURITY_PASSWORD_SALT'] = os.environ.get("SECURITY_PASSWORD_SALT")
     jwt.init_app(app)
     flask_bcrypt.init_app(app)
     dbx.init_app(app)
@@ -55,14 +59,12 @@ def create_app(config_name: str):
         api.init_app(app)
         register_extensions(app)
         cloud_mongodb.init_app(app)
-
-    print ("After initializing the context")
+        celery = Celery(broker=BROKER_URL,backend=BACKEND_URL)
     @app.before_request
     def before_request():
-        print ("Before request I see this")
         g.db = cloud_mongodb.db
-
-
+        g.celery = celery
+        #g.celery.send_task("Multiply two numbers", (43,34))
     @app.after_request
     def after_request(response):
         """ Logging after every request. """
@@ -87,8 +89,8 @@ def create_app(config_name: str):
 
 def register_extensions(app):
     logs.init_app(app)
-    NeoDB.init_app(app, app.config['FTEYES_GDB_URI'], app.config['FTEYES_GDB_DB'], app.config['FTEYES_GDB_USER'],
-                   app.config['FTEYES_GDB_PWD'])
+    NeoDB.init_app(app, os.environ.get("GRAPH_DB_URI"), os.environ.get("GRAPH_DB_STR"), os.environ.get("GRAPH_DB_USER"),
+                   os.environ.get("GRAPH_DB_PWD"))
     #RedisCache.init_app(app, app.config['REDIS_HOST'], app.config['REDIS_PORT'], app.config['REDIS_PASSWORD'], app.config['REDIS_DBNAME'])
     #from service.cachebuilder import load_category_cache, load_subcat_brand_cache
     #load_category_cache()

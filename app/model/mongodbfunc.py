@@ -49,6 +49,7 @@ class MongoDBFunctions():
                                                          "referred_user_id": hshuser["referred_user_id"],
                                                          "email_address": hshuser["email_address"],
                                                          "friend_circle_id": hshuser["friend_circle_id"],
+                                                         "country_code": hshuser["country_code"],
                                                          "phone_number": hshuser["phone_number"],
                                                          "gender": hshuser["gender"],
                                                          "first_name": hshuser["first_name"],
@@ -73,10 +74,14 @@ class MongoDBFunctions():
     def insert_user(self, user_hash):
         #mage chagnes on 01/13/2022 to add age to mongo db
         try:
-            if "user_id" not in user_hash and "email_address" not in user_hash and "phone_number"  not in user_hash:
+            if "user_id" not in user_hash or \
+                    "email_address" not in user_hash or \
+                    "phone_number"  not in user_hash or \
+                    "country_code" not in user_hash:
                 current_app.logger.error("Required field either user id or email address is missing")
                 return False
             user_hash["password"] = user_hash["password"] if "password" in user_hash else None
+            user_hash["country_code"] = user_hash["country_code"] if "country_code" in user_hash else None
             user_hash["phone_number"] = user_hash["phone_number"] if "phone_number" in user_hash else None
             user_hash["gender"] = user_hash["gender"] if "gender" in user_hash else None
             user_hash["first_name"] = user_hash["first_name"] if "first_name" in user_hash else None
@@ -89,12 +94,13 @@ class MongoDBFunctions():
             mongo_user_collection = pymongo.collection.Collection(g.db, "user")
             full_name = None
 
-            result = mongo_user_collection.find_one({"$or":[{"user_id": user_hash.get("user_id")},{"email":user_hash.get("phone_number")}]})
+            result = mongo_user_collection.find_one({"$or":[{"user_id": user_hash.get("user_id")},{"phone_number":user_hash.get("phone_number")}]})
             if result is None:
                 full_name = str(user_hash.get("first_name")) + " " + str(user_hash.get("last_name"))
                 mongo_user_collection.insert_one({"user_id": user_hash.get("user_id"),
                                                   "email": user_hash.get("email_address"),
                                                   "password": user_hash.get("password"),
+                                                  "country_code": user_hash.get("country_code"),
                                                   "phone_number": user_hash.get("phone_number"),
                                                   "gender": user_hash.get("gender"),
                                                   "age": user_hash.get("age"),
